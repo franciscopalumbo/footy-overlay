@@ -44,7 +44,7 @@
 
     /* ============================================================
        Z-INDEX STACK (all layers documented here — edit in one place)
-       nav=100 | overlay-widget=200 | profile-selector=300 | modal-backdrop=400 | toasts=500
+       nav=100 | overlay-widget=200 | login-screen=300 | modal-backdrop=400 | toasts=500
        ============================================================ */
 
     /* ============================================================
@@ -185,22 +185,103 @@
     }
     body.mock-mode #mock-badge { display: flex; align-items: center; gap: 4px; }
 
-    /* Profile avatar button */
-    #profile-btn {
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      border: 2px solid var(--border);
+    /* User identity chip + dropdown in header */
+    #user-menu-wrap {
+      position: relative;
+    }
+    #user-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px 5px 5px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
       background: var(--bg-card);
-      font-size: 1.3rem;
+      cursor: pointer;
+      transition: var(--transition);
+      max-width: 220px;
+    }
+    #user-chip:hover, #user-chip:focus-visible {
+      border-color: var(--border-hover);
+      background: var(--bg-card-hover);
+    }
+    .user-initials {
+      width: 30px; height: 30px;
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: var(--transition);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
     }
-    #profile-btn:hover, #profile-btn:focus-visible {
-      border-color: var(--accent-blue);
-      box-shadow: 0 0 0 3px rgba(59,130,246,0.25);
+    .user-chip-text {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
     }
+    .user-chip-name {
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+    }
+    .user-chip-email {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+    }
+    .user-chip-caret {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* Dropdown */
+    #user-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      min-width: 180px;
+      box-shadow: var(--shadow);
+      z-index: 150;
+      overflow: hidden;
+      animation: modal-in 0.18s ease both;
+    }
+    #user-dropdown.open { display: block; }
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .dropdown-item:hover, .dropdown-item:focus-visible {
+      background: var(--bg-card-hover);
+      outline: none;
+    }
+    .dropdown-item.danger { color: var(--accent-red); }
 
     /* ---- Main content area ---- */
     #main {
@@ -673,7 +754,7 @@
       inset: 0;
       background: rgba(0,0,0,0.7);
       backdrop-filter: blur(4px);
-      z-index: 400; /* modal-backdrop layer — must exceed profile-selector (300) */
+      z-index: 400; /* modal-backdrop layer — must exceed login-screen (300) */
       align-items: center;
       justify-content: center;
       padding: 24px;
@@ -731,88 +812,56 @@
     }
 
     /* ============================================================
-       PROFILE SELECTOR — Netflix style
+       LOGIN SCREEN
        ============================================================ */
-    #profile-selector {
+    #login-screen {
       display: none;
       position: fixed;
       inset: 0;
-      background: rgba(13,17,23,0.97);
-      backdrop-filter: blur(16px);
-      z-index: 300; /* profile-selector layer */
+      background: var(--bg-primary);
+      z-index: 300; /* login-screen layer */
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      padding: 24px;
+    }
+    #login-screen.open { display: flex; }
+
+    .login-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      animation: modal-in 0.3s ease both;
     }
-    #profile-selector.open { display: flex; }
 
-    .profile-selector-title {
+    .login-logo {
       font-family: var(--font-display);
-      font-size: 3rem;
-      letter-spacing: 0.1em;
-      margin-bottom: 8px;
-      text-align: center;
-    }
-    .profile-selector-sub {
-      color: var(--text-muted);
-      margin-bottom: 48px;
-      text-align: center;
-    }
-
-    .profiles-grid {
+      font-size: 2.2rem;
+      letter-spacing: 0.06em;
       display: flex;
-      gap: 24px;
-      flex-wrap: wrap;
-      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .login-tagline {
+      font-size: 0.85rem;
+      color: var(--text-muted);
       margin-bottom: 32px;
     }
+    .login-card .form-group { margin-bottom: 20px; }
+    .login-card .form-group:last-of-type { margin-bottom: 28px; }
 
-    .profile-card {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 12px;
-      padding: 24px;
-      border-radius: var(--radius);
-      border: 2px solid transparent;
-      background: var(--bg-card);
-      cursor: pointer;
-      transition: var(--transition);
-      min-width: 120px;
-    }
-    .profile-card:hover, .profile-card:focus-visible {
-      border-color: var(--accent-blue);
-      background: rgba(59,130,246,0.08);
-      transform: scale(1.05);
-    }
-
-    .profile-avatar {
-      width: 72px; height: 72px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.2rem;
-      border: 3px solid var(--border);
-      transition: var(--transition);
-    }
-    .profile-card:hover .profile-avatar { border-color: var(--accent-blue); }
-    .profile-name {
-      font-weight: 600;
-      font-size: 0.9rem;
-    }
-
-    .add-profile-card {
-      opacity: 0.7;
-    }
-    .add-profile-card .profile-avatar {
-      background: var(--bg-card);
-      border-style: dashed;
-      font-size: 1.8rem;
+    .login-footer-note {
+      margin-top: 20px;
+      font-size: 0.75rem;
       color: var(--text-muted);
+      text-align: center;
+      line-height: 1.6;
     }
-    .add-profile-card:hover { opacity: 1; }
 
     /* ============================================================
        GAME DETAIL VIEW (View 2)
@@ -862,89 +911,148 @@
     }
 
     /* ============================================================
-       CUSTOMISE PLAYERS VIEW (View 3)
+       CUSTOMISE PLAYERS VIEW (View 3) — dual-panel side-by-side picker
        ============================================================ */
-    .custom-team-cards {
-      display: flex;
-      flex-direction: column;
+
+    /* Two panels sit side-by-side on desktop, stack on mobile */
+    .pick-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
       gap: 16px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 640px) {
+      .pick-panels { grid-template-columns: 1fr; }
     }
 
-    .custom-team-card {
+    .pick-panel {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
-      transition: var(--transition);
+      display: flex;
+      flex-direction: column;
     }
 
-    .custom-team-header {
+    .pick-panel-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 20px;
-      cursor: pointer;
-      border-left: 5px solid var(--accent-blue);
+      padding: 12px 16px;
+      border-left: 5px solid var(--accent-blue); /* overridden inline per team */
+      background: rgba(255,255,255,0.03);
+      flex-shrink: 0;
     }
-
-    .custom-team-header-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .custom-team-name-display {
+    .pick-panel-title {
       font-family: var(--font-display);
       font-size: 1.2rem;
       letter-spacing: 0.05em;
     }
-    .custom-team-count {
-      font-size: 0.75rem;
+    .pick-panel-count {
+      font-size: 0.72rem;
       color: var(--text-muted);
-      background: var(--bg-card);
+      background: var(--bg-secondary);
       padding: 2px 8px;
       border-radius: 20px;
+      white-space: nowrap;
     }
 
-    .custom-team-body {
-      padding: 20px;
-      border-top: 1px solid var(--border);
-    }
-    .custom-team-card.collapsed .custom-team-body { display: none; }
-
-    .player-select-list {
-      max-height: 200px;
+    /* Scrollable player list inside each panel */
+    .pick-list {
       overflow-y: auto;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      margin-top: 8px;
+      /* Fills remaining panel height; cap so both panels don't go off-screen */
+      max-height: 420px;
+      flex: 1;
+    }
+    @media (max-width: 640px) {
+      .pick-list { max-height: 260px; }
     }
 
-    .player-select-item {
+    /* Individual player row */
+    .pick-row {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 8px 14px;
+      padding: 9px 14px;
       border-bottom: 1px solid var(--border);
       cursor: pointer;
+      transition: background 0.15s;
+      user-select: none;
+    }
+    .pick-row:last-child { border-bottom: none; }
+    .pick-row:hover     { background: var(--bg-card-hover); }
+    .pick-row.selected  { background: rgba(59,130,246,0.1); }
+    .pick-row:focus-visible {
+      outline: 3px solid var(--accent-live);
+      outline-offset: -3px;
+    }
+
+    /* Checkbox — custom styled so it matches the dark theme */
+    .pick-checkbox {
+      width: 16px; height: 16px;
+      border-radius: 4px;
+      border: 1.5px solid var(--text-muted);
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
       transition: var(--transition);
     }
-    .player-select-item:last-child { border-bottom: none; }
-    .player-select-item:hover { background: var(--bg-card); }
-    .player-select-item.selected { background: rgba(59,130,246,0.1); }
+    .pick-row.selected .pick-checkbox {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+    .pick-checkbox::after {
+      content: '';
+      display: none;
+      width: 4px; height: 7px;
+      border: 2px solid #fff;
+      border-top: none;
+      border-left: none;
+      transform: rotate(45deg) translate(-1px, -1px);
+    }
+    .pick-row.selected .pick-checkbox::after { display: block; }
 
-    .player-jersey { 
+    .pick-jersey {
       font-family: var(--font-display);
       font-size: 1rem;
       color: var(--text-muted);
-      min-width: 24px;
-      text-align: center;
+      min-width: 26px;
+      text-align: right;
+      flex-shrink: 0;
     }
-    .player-check {
-      margin-left: auto;
-      color: var(--accent-blue);
-      opacity: 0;
+    .pick-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .player-select-item.selected .player-check { opacity: 1; }
+    .pick-pos {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    /* "Select all" header row inside the list */
+    .pick-select-all {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      transition: background 0.15s;
+    }
+    .pick-select-all:hover { background: var(--bg-card-hover); }
 
     /* ============================================================
        OVERLAY VIEW (View 4) — Fixed, draggable, always-on-top
@@ -1209,6 +1317,13 @@
       animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%       { transform: translateX(-6px); }
+      40%       { transform: translateX(5px); }
+      60%       { transform: translateX(-4px); }
+      80%       { transform: translateX(3px); }
+    }
 
     .loading-state {
       display: flex;
@@ -1301,10 +1416,25 @@
       <button class="btn btn-ghost btn-sm" id="overlay-toggle-btn" aria-label="Toggle overlay" style="display:none">
         🪟 Overlay
       </button>
-      <!-- Profile selector button -->
-      <button id="profile-btn" aria-label="Switch profile" tabindex="0">
-        <span id="profile-avatar-display">😊</span>
-      </button>
+      <!-- User identity chip -->
+      <div id="user-menu-wrap" style="display:none">
+        <button id="user-chip" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" tabindex="0">
+          <span class="user-initials" id="user-initials-badge"></span>
+          <span class="user-chip-text">
+            <span class="user-chip-name" id="user-chip-name"></span>
+            <span class="user-chip-email" id="user-chip-email"></span>
+          </span>
+          <span class="user-chip-caret" aria-hidden="true">▼</span>
+        </button>
+        <div id="user-dropdown" role="menu" aria-label="Account options">
+          <button class="dropdown-item" id="btn-switch-account" role="menuitem" tabindex="0">
+            ↩ Switch account
+          </button>
+          <button class="dropdown-item danger" id="btn-sign-out" role="menuitem" tabindex="0">
+            ⏏ Sign out
+          </button>
+        </div>
+      </div>
     </div>
   </header>
 
@@ -1387,7 +1517,7 @@
           <div class="form-group">
             <label for="opponent-team-input">Paste player names or IDs (one per line)</label>
             <textarea id="opponent-team-input" rows="6"
-              placeholder="e.g.&#10;Patrick Dangerfield&#10;Marcus Bontempelli&#10;Clayton Oliver"></textarea>
+              placeholder="e.g.&#10;P. Dangerfield&#10;M. Bontempelli&#10;C. Oliver"></textarea>
           </div>
           <div class="flex gap-8">
             <button class="btn btn-primary" id="btn-save-opponent">Save Opponent Team</button>
@@ -1399,37 +1529,28 @@
     </section>
 
     <!-- ============================================================
-         VIEW: CUSTOMISE PLAYERS (view 3)
+         VIEW: CUSTOMISE PLAYERS (view 3) — dual-panel team picker
          ============================================================ -->
     <section id="view-customise" class="view" aria-label="Customise fantasy teams">
 
+      <!-- Top toolbar: back | heading | scoreboard mode -->
       <div class="flex items-center justify-between mb-24">
-        <div>
-          <button class="back-btn" id="customise-back" aria-label="Return to game detail">← Back</button>
-        </div>
-        <h1 class="section-heading" style="margin-bottom:0">🎨 Customise Teams</h1>
+        <button class="back-btn" id="customise-back" aria-label="Return to game detail">← Back</button>
+        <h1 class="section-heading" style="margin-bottom:0">🎨 Select Players</h1>
         <button class="btn btn-danger btn-sm" id="btn-scoreboard-mode" tabindex="0">
-          📋 Full Scoreboard Mode
+          📋 Full Scoreboard
         </button>
       </div>
 
-      <!-- Custom team cards container -->
-      <div id="custom-teams-container" class="custom-team-cards" role="list">
+      <!-- Side-by-side team panels (injected by renderPickPanels()) -->
+      <div class="pick-panels" id="pick-panels-wrap" aria-label="Player selection panels">
         <!-- Injected by JS -->
-      </div>
-
-      <!-- Add team button (max 5) -->
-      <div style="margin-top:16px;">
-        <button class="btn btn-ghost" id="btn-add-team" tabindex="0">
-          + Add Team
-        </button>
-        <span id="team-count-label" class="text-muted text-sm" style="margin-left:12px">0 / 5 teams</span>
       </div>
 
       <div class="divider"></div>
 
       <button class="btn btn-primary btn-lg" id="btn-save-customise" tabindex="0">
-        ✅ Save & Return to Game
+        ✅ Save &amp; Return to Game
       </button>
 
     </section>
@@ -1466,12 +1587,75 @@
           <div class="form-group">
             <label for="team-import-text">Paste player names — one per line</label>
             <textarea id="team-import-text" rows="8"
-              placeholder="e.g.&#10;Patrick Dangerfield&#10;Marcus Bontempelli&#10;Lachlan Neale&#10;Clayton Oliver&#10;Christian Petracca"></textarea>
+              placeholder="e.g.&#10;P. Dangerfield&#10;M. Bontempelli&#10;L. Neale&#10;C. Oliver&#10;C. Petracca"></textarea>
           </div>
-          <div class="flex gap-8">
+          <div class="flex gap-8" style="flex-wrap:wrap;align-items:center;">
             <button class="btn btn-primary" id="btn-confirm-import-team">Import</button>
             <button class="btn btn-ghost" id="btn-cancel-import-team">Cancel</button>
+            <!-- Hidden file input — triggered by the screenshot button below -->
+            <input type="file" id="screenshot-file-input" accept="image/png,image/jpeg,image/jpg,image/webp"
+                   style="display:none" aria-hidden="true" tabindex="-1" />
+            <button class="btn btn-ghost" id="btn-import-screenshot" tabindex="0"
+                    aria-label="Import team from a screenshot image">
+              📷 Import from Screenshot
+            </button>
           </div>
+
+          <!-- Screenshot processing state — hidden until triggered -->
+          <div id="screenshot-status" style="display:none; margin-top:16px;">
+            <!-- (a) Loading spinner -->
+            <div id="screenshot-loading" style="display:none;">
+              <div class="loading-state">
+                <div class="spinner"></div>
+                <span>Reading screenshot…</span>
+              </div>
+            </div>
+
+            <!-- (b) Error message -->
+            <div id="screenshot-error" style="display:none;">
+              <div style="display:flex;align-items:flex-start;gap:10px;padding:12px 16px;
+                          background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);
+                          border-radius:var(--radius-sm);">
+                <span style="font-size:1.1rem;flex-shrink:0">⚠️</span>
+                <div>
+                  <div style="font-weight:600;font-size:0.875rem;color:var(--accent-red)"
+                       id="screenshot-error-msg">Couldn't read this screenshot.</div>
+                  <div style="font-size:0.8rem;color:var(--text-muted);margin-top:3px">
+                    Try cropping closer to the player list and re-uploading.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- (c) Confirmation checklist -->
+            <div id="screenshot-confirm" style="display:none;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                <span style="font-size:0.875rem;font-weight:600;" id="screenshot-found-label">
+                  We found these players — does this look right?
+                </span>
+                <button class="btn btn-ghost btn-sm" id="btn-screenshot-select-all"
+                        style="font-size:0.75rem;" tabindex="0">
+                  Deselect all
+                </button>
+              </div>
+              <!-- Scrollable checklist of extracted names with checkboxes -->
+              <div id="screenshot-player-list"
+                   style="max-height:220px;overflow-y:auto;border:1px solid var(--border);
+                          border-radius:var(--radius-sm);margin-bottom:12px;"
+                   role="group" aria-label="Extracted players">
+                <!-- Injected by JS -->
+              </div>
+              <div class="flex gap-8">
+                <button class="btn btn-primary" id="btn-screenshot-confirm" tabindex="0">
+                  ✅ Confirm &amp; Import
+                </button>
+                <button class="btn btn-ghost" id="btn-screenshot-retry" tabindex="0">
+                  Try another image
+                </button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -1494,7 +1678,7 @@
           </div>
           <div class="radio-option">
             <input type="radio" name="scoring-system" id="scoring-sc" value="supercoach" />
-            <label for="scoring-sc">⚽ SuperCoach</label>
+            <label for="scoring-sc"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false" style="vertical-align:-3px;flex-shrink:0"><ellipse cx="10" cy="10" rx="5.5" ry="8.5" fill="none" stroke="var(--accent-live)" stroke-width="1.4"/><line x1="10" y1="1.5" x2="10" y2="18.5" stroke="var(--accent-live)" stroke-width="1.4"/><line x1="7.2" y1="7" x2="12.8" y2="7" stroke="var(--accent-live)" stroke-width="1.2" stroke-linecap="round"/><line x1="7.2" y1="13" x2="12.8" y2="13" stroke="var(--accent-live)" stroke-width="1.2" stroke-linecap="round"/></svg> SuperCoach</label>
           </div>
         </div>
       </div>
@@ -1583,7 +1767,7 @@
       <!-- Danger zone -->
       <div class="settings-section danger-zone">
         <div class="settings-section-title">Danger Zone</div>
-        <p class="text-sm text-muted mb-16">This will delete all profiles, teams, and settings. This cannot be undone.</p>
+        <p class="text-sm text-muted mb-16">This will delete all locally stored data for your account — teams, settings, and preferences. This cannot be undone.</p>
         <button class="btn btn-danger" id="btn-clear-data" tabindex="0">
           🗑 Clear All Data
         </button>
@@ -1644,50 +1828,40 @@
 <div id="toast-container" aria-live="polite" aria-atomic="false" role="log"></div>
 
 <!-- ================================================================
-     PROFILE SELECTOR (Netflix style)
+     LOGIN SCREEN — shown on first load or after switch/sign-out
      ================================================================ -->
-<div id="profile-selector" role="dialog" aria-modal="true" aria-label="Select profile">
-  <div class="profile-selector-title">Who's watching?</div>
-  <p class="profile-selector-sub">Select a profile to load your personalised fantasy data</p>
+<div id="login-screen" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  <div class="login-card">
 
-  <div class="profiles-grid" id="profiles-grid" role="list">
-    <!-- Injected by JS -->
-  </div>
-
-  <button class="btn btn-ghost" id="manage-profiles-btn">Manage Profiles</button>
-</div>
-
-<!-- ================================================================
-     MODALS
-     ================================================================ -->
-
-<!-- Add / Edit Profile modal -->
-<div class="modal-backdrop" id="modal-add-profile" role="dialog" aria-modal="true" aria-labelledby="modal-add-profile-title">
-  <div class="modal">
-    <div class="modal-header">
-      <span class="modal-title" id="modal-add-profile-title">Create Profile</span>
-      <button class="modal-close" data-modal="modal-add-profile" aria-label="Close modal">✕</button>
+    <div class="login-logo" id="login-title">
+      <span class="dot" style="width:10px;height:10px;border-radius:50%;background:var(--accent-live);box-shadow:0 0 10px var(--accent-live);display:inline-block;" aria-hidden="true"></span>
+      FOOTY<span style="color:var(--accent-blue)">OVERLAY</span>
     </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label for="new-profile-name">Profile Name</label>
-        <input type="text" id="new-profile-name" placeholder="e.g. Lachlan" maxlength="20" />
-      </div>
-      <div class="form-group">
-        <label>Choose Avatar</label>
-        <div id="avatar-picker" class="flex gap-8" style="flex-wrap:wrap;">
-          <!-- Injected by JS -->
-        </div>
-      </div>
+    <p class="login-tagline">Live AFL Fantasy &amp; SuperCoach scoring overlay</p>
+
+    <div class="form-group">
+      <label for="login-email">Email address</label>
+      <input type="email" id="login-email" placeholder="you@example.com"
+             autocomplete="email" spellcheck="false" tabindex="0" />
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-modal="modal-add-profile">Cancel</button>
-      <button class="btn btn-primary" id="btn-create-profile">Create Profile</button>
+
+    <div class="form-group">
+      <label for="login-name">Display name</label>
+      <input type="text" id="login-name" placeholder="e.g. Lachlan" maxlength="30"
+             autocomplete="given-name" tabindex="0" />
     </div>
+
+    <button class="btn btn-primary btn-lg" id="btn-login" tabindex="0" style="width:100%">
+      Let's go →
+    </button>
+
+    <p class="login-footer-note">
+      No password needed — your settings are saved locally to this device
+      and restored whenever you use the same email.
+    </p>
+
   </div>
 </div>
-
-<!-- Confirm / Alert modal -->
 <div class="modal-backdrop" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title">
   <div class="modal">
     <div class="modal-header">
@@ -1744,8 +1918,7 @@ const SUPERCOACH_POINTS = {
   free_against:-3,
 };
 
-/** @type {string[]} Emoji options for profile avatars */
-const AVATAR_OPTIONS = ['😊','🏉','🦘','🦁','🐯','🦊','🐻','🐼','🦅','⭐','🔥','💪','🏆','🎯','🤙'];
+/** @type {string[]} Emoji options for profile avatars — REMOVED (email login) */
 
 /**
  * JERSEY_FALLBACK — Hardcoded jersey numbers for the most common AFL fantasy players.
@@ -1761,116 +1934,116 @@ const AVATAR_OPTIONS = ['😊','🏉','🦘','🦁','🐯','🦊','🐻','🐼',
  */
 const JERSEY_FALLBACK = {
   // ── Geelong ──────────────────────────────────────────────
-  'Patrick Dangerfield':    { jersey: 35, team: 'Geelong' },
-  'Tom Hawkins':            { jersey: 26, team: 'Geelong' },
-  'Jeremy Cameron':         { jersey: 5,  team: 'Geelong' },
-  'Mark Blicavs':           { jersey: 22, team: 'Geelong' },
-  'Isaac Smith':            { jersey: 8,  team: 'Geelong' },
-  'Mitch Duncan':           { jersey: 22, team: 'Geelong' },
-  'Tyson Stengle':          { jersey: 2,  team: 'Geelong' },
+  'P. Dangerfield':    { jersey: 35, team: 'Geelong' },
+  'T. Hawkins':            { jersey: 26, team: 'Geelong' },
+  'J. Cameron':         { jersey: 5,  team: 'Geelong' },
+  'M. Blicavs':           { jersey: 22, team: 'Geelong' },
+  'I. Smith':            { jersey: 8,  team: 'Geelong' },
+  'M. Duncan':           { jersey: 22, team: 'Geelong' },
+  'T. Stengle':          { jersey: 2,  team: 'Geelong' },
   // ── Western Bulldogs ─────────────────────────────────────
-  'Marcus Bontempelli':     { jersey: 4,  team: 'Western Bulldogs' },
-  'Adam Treloar':           { jersey: 8,  team: 'Western Bulldogs' },
-  'Bailey Smith':           { jersey: 9,  team: 'Western Bulldogs' },
-  'Tom Liberatore':         { jersey: 7,  team: 'Western Bulldogs' },
-  'Cody Weightman':         { jersey: 27, team: 'Western Bulldogs' },
+  'M. Bontempelli':     { jersey: 4,  team: 'Western Bulldogs' },
+  'A. Treloar':           { jersey: 8,  team: 'Western Bulldogs' },
+  'B. Smith':           { jersey: 9,  team: 'Western Bulldogs' },
+  'T. Liberatore':         { jersey: 7,  team: 'Western Bulldogs' },
+  'C. Weightman':         { jersey: 27, team: 'Western Bulldogs' },
   // ── Brisbane Lions ───────────────────────────────────────
-  'Lachlan Neale':          { jersey: 6,  team: 'Brisbane Lions' },
-  'Zac Bailey':             { jersey: 2,  team: 'Brisbane Lions' },
-  'Joe Daniher':            { jersey: 5,  team: 'Brisbane Lions' },
-  'Charlie Cameron':        { jersey: 7,  team: 'Brisbane Lions' },
-  'Dayne Zorko':            { jersey: 9,  team: 'Brisbane Lions' },
-  'Lincoln McCarthy':       { jersey: 3,  team: 'Brisbane Lions' },
+  'L. Neale':          { jersey: 6,  team: 'Brisbane Lions' },
+  'Z. Bailey':             { jersey: 2,  team: 'Brisbane Lions' },
+  'J. Daniher':            { jersey: 5,  team: 'Brisbane Lions' },
+  'C. Cameron':        { jersey: 7,  team: 'Brisbane Lions' },
+  'D. Zorko':            { jersey: 9,  team: 'Brisbane Lions' },
+  'L. McCarthy':       { jersey: 3,  team: 'Brisbane Lions' },
   // ── Melbourne ────────────────────────────────────────────
-  'Clayton Oliver':         { jersey: 13, team: 'Melbourne' },
-  'Christian Petracca':     { jersey: 5,  team: 'Melbourne' },
-  'Max Gawn':               { jersey: 11, team: 'Melbourne' },
-  'Jack Viney':             { jersey: 7,  team: 'Melbourne' },
-  'Bayley Fritsch':         { jersey: 12, team: 'Melbourne' },
-  'Steven May':             { jersey: 44, team: 'Melbourne' },
-  'Jake Melksham':          { jersey: 18, team: 'Melbourne' },
+  'C. Oliver':         { jersey: 13, team: 'Melbourne' },
+  'C. Petracca':     { jersey: 5,  team: 'Melbourne' },
+  'M. Gawn':               { jersey: 11, team: 'Melbourne' },
+  'J. Viney':             { jersey: 7,  team: 'Melbourne' },
+  'B. Fritsch':         { jersey: 12, team: 'Melbourne' },
+  'S. May':             { jersey: 44, team: 'Melbourne' },
+  'J. Melksham':          { jersey: 18, team: 'Melbourne' },
   // ── Collingwood ──────────────────────────────────────────
-  'Nick Daicos':            { jersey: 35, team: 'Collingwood' },
-  'Scott Pendlebury':       { jersey: 10, team: 'Collingwood' },
-  'Jordan De Goey':         { jersey: 5,  team: 'Collingwood' },
-  'Darcy Moore':            { jersey: 2,  team: 'Collingwood' },
-  'Brayden Maynard':        { jersey: 21, team: 'Collingwood' },
-  'Mason Cox':              { jersey: 49, team: 'Collingwood' },
+  'N. Daicos':            { jersey: 35, team: 'Collingwood' },
+  'S. Pendlebury':       { jersey: 10, team: 'Collingwood' },
+  'J. De Goey':         { jersey: 5,  team: 'Collingwood' },
+  'D. Moore':            { jersey: 2,  team: 'Collingwood' },
+  'B. Maynard':        { jersey: 21, team: 'Collingwood' },
+  'M. Cox':              { jersey: 49, team: 'Collingwood' },
   // ── Richmond ─────────────────────────────────────────────
-  'Dustin Martin':          { jersey: 4,  team: 'Richmond' },
-  'Shai Bolton':            { jersey: 12, team: 'Richmond' },
-  'Jack Riewoldt':          { jersey: 8,  team: 'Richmond' },
-  'Trent Cotchin':          { jersey: 9,  team: 'Richmond' },
-  'Nick Vlastuin':          { jersey: 22, team: 'Richmond' },
-  'Tom Lynch':              { jersey: 4,  team: 'Richmond' },
+  'D. Martin':          { jersey: 4,  team: 'Richmond' },
+  'S. Bolton':            { jersey: 12, team: 'Richmond' },
+  'J. Riewoldt':          { jersey: 8,  team: 'Richmond' },
+  'T. Cotchin':          { jersey: 9,  team: 'Richmond' },
+  'N. Vlastuin':          { jersey: 22, team: 'Richmond' },
+  'T. Lynch':              { jersey: 4,  team: 'Richmond' },
   // ── Carlton ──────────────────────────────────────────────
-  'Patrick Cripps':         { jersey: 9,  team: 'Carlton' },
-  'Harry McKay':            { jersey: 1,  team: 'Carlton' },
-  'Sam Walsh':              { jersey: 8,  team: 'Carlton' },
-  'David Cuningham':        { jersey: 25, team: 'Carlton' },
-  'Zac Williams':           { jersey: 22, team: 'Carlton' },
+  'P. Cripps':         { jersey: 9,  team: 'Carlton' },
+  'H. McKay':            { jersey: 1,  team: 'Carlton' },
+  'S. Walsh':              { jersey: 8,  team: 'Carlton' },
+  'D. Cuningham':        { jersey: 25, team: 'Carlton' },
+  'Z. Williams':           { jersey: 22, team: 'Carlton' },
   // ── Hawthorn ─────────────────────────────────────────────
-  'James Sicily':           { jersey: 8,  team: 'Hawthorn' },
-  'Jai Newcombe':           { jersey: 12, team: 'Hawthorn' },
-  'Dylan Moore':            { jersey: 15, team: 'Hawthorn' },
-  'Mitch Lewis':            { jersey: 26, team: 'Hawthorn' },
-  'Finn Maginness':         { jersey: 33, team: 'Hawthorn' },
+  'J. Sicily':           { jersey: 8,  team: 'Hawthorn' },
+  'J. Newcombe':           { jersey: 12, team: 'Hawthorn' },
+  'D. Moore':            { jersey: 15, team: 'Hawthorn' },
+  'M. Lewis':            { jersey: 26, team: 'Hawthorn' },
+  'F. Maginness':         { jersey: 33, team: 'Hawthorn' },
   // ── Essendon ─────────────────────────────────────────────
-  'Darcy Parish':           { jersey: 7,  team: 'Essendon' },
-  'Jordan Ridley':          { jersey: 11, team: 'Essendon' },
-  'Jake Stringer':          { jersey: 4,  team: 'Essendon' },
-  'Kyle Langford':          { jersey: 12, team: 'Essendon' },
-  'Peter Wright':           { jersey: 20, team: 'Essendon' },
+  'D. Parish':           { jersey: 7,  team: 'Essendon' },
+  'J. Ridley':          { jersey: 11, team: 'Essendon' },
+  'J. Stringer':          { jersey: 4,  team: 'Essendon' },
+  'K. Langford':          { jersey: 12, team: 'Essendon' },
+  'P. Wright':           { jersey: 20, team: 'Essendon' },
   // ── Sydney Swans ─────────────────────────────────────────
-  'Callum Mills':           { jersey: 14, team: 'Sydney' },
-  'Chad Warner':            { jersey: 31, team: 'Sydney' },
-  'Lance Franklin':         { jersey: 23, team: 'Sydney' },
-  'Tom Papley':             { jersey: 11, team: 'Sydney' },
-  'Isaac Heeney':           { jersey: 5,  team: 'Sydney' },
-  'Errol Gulden':           { jersey: 10, team: 'Sydney' },
+  'C. Mills':           { jersey: 14, team: 'Sydney' },
+  'C. Warner':            { jersey: 31, team: 'Sydney' },
+  'L. Franklin':         { jersey: 23, team: 'Sydney' },
+  'T. Papley':             { jersey: 11, team: 'Sydney' },
+  'I. Heeney':           { jersey: 5,  team: 'Sydney' },
+  'E. Gulden':           { jersey: 10, team: 'Sydney' },
   // ── GWS Giants ───────────────────────────────────────────
-  'Toby Greene':            { jersey: 4,  team: 'GWS Giants' },
-  'Lachie Whitfield':       { jersey: 6,  team: 'GWS Giants' },
-  'Jesse Hogan':            { jersey: 17, team: 'GWS Giants' },
-  'Jacob Hopper':           { jersey: 3,  team: 'GWS Giants' },
+  'T. Greene':            { jersey: 4,  team: 'GWS Giants' },
+  'L. Whitfield':       { jersey: 6,  team: 'GWS Giants' },
+  'J. Hogan':            { jersey: 17, team: 'GWS Giants' },
+  'J. Hopper':           { jersey: 3,  team: 'GWS Giants' },
   // ── Adelaide Crows ───────────────────────────────────────
-  'Rory Laird':             { jersey: 22, team: 'Adelaide' },
-  'Taylor Walker':          { jersey: 13, team: 'Adelaide' },
-  'Ben Keays':              { jersey: 28, team: 'Adelaide' },
-  'Jordan Dawson':          { jersey: 3,  team: 'Adelaide' },
-  'Izak Rankine':           { jersey: 2,  team: 'Adelaide' },
+  'R. Laird':             { jersey: 22, team: 'Adelaide' },
+  'T. Walker':          { jersey: 13, team: 'Adelaide' },
+  'B. Keays':              { jersey: 28, team: 'Adelaide' },
+  'J. Dawson':          { jersey: 3,  team: 'Adelaide' },
+  'I. Rankine':           { jersey: 2,  team: 'Adelaide' },
   // ── Port Adelaide ────────────────────────────────────────
-  'Travis Boak':            { jersey: 5,  team: 'Port Adelaide' },
-  'Connor Rozee':           { jersey: 9,  team: 'Port Adelaide' },
-  'Zak Butters':            { jersey: 6,  team: 'Port Adelaide' },
-  'Ollie Wines':            { jersey: 23, team: 'Port Adelaide' },
-  'Charlie Dixon':          { jersey: 17, team: 'Port Adelaide' },
+  'T. Boak':            { jersey: 5,  team: 'Port Adelaide' },
+  'C. Rozee':           { jersey: 9,  team: 'Port Adelaide' },
+  'Z. Butters':            { jersey: 6,  team: 'Port Adelaide' },
+  'O. Wines':            { jersey: 23, team: 'Port Adelaide' },
+  'C. Dixon':          { jersey: 17, team: 'Port Adelaide' },
   // ── Fremantle ────────────────────────────────────────────
-  'Nat Fyfe':               { jersey: 6,  team: 'Fremantle' },
-  'Andrew Brayshaw':        { jersey: 15, team: 'Fremantle' },
-  'Caleb Serong':           { jersey: 28, team: 'Fremantle' },
-  'Michael Walters':        { jersey: 9,  team: 'Fremantle' },
-  'Josh Treacy':            { jersey: 5,  team: 'Fremantle' },
+  'N. Fyfe':               { jersey: 6,  team: 'Fremantle' },
+  'A. Brayshaw':        { jersey: 15, team: 'Fremantle' },
+  'C. Serong':           { jersey: 28, team: 'Fremantle' },
+  'M. Walters':        { jersey: 9,  team: 'Fremantle' },
+  'J. Treacy':            { jersey: 5,  team: 'Fremantle' },
   // ── West Coast Eagles ────────────────────────────────────
-  'Tim Kelly':              { jersey: 4,  team: 'West Coast' },
-  'Elliot Yeo':             { jersey: 15, team: 'West Coast' },
-  'Jamie Cripps':           { jersey: 9,  team: 'West Coast' },
-  'Oscar Allen':            { jersey: 17, team: 'West Coast' },
+  'T. Kelly':              { jersey: 4,  team: 'West Coast' },
+  'E. Yeo':             { jersey: 15, team: 'West Coast' },
+  'J. Cripps':           { jersey: 9,  team: 'West Coast' },
+  'O. Allen':            { jersey: 17, team: 'West Coast' },
   // ── North Melbourne ──────────────────────────────────────
-  'Jason Horne-Francis':    { jersey: 1,  team: 'North Melbourne' },
-  'Luke Davies-Uniacke':    { jersey: 6,  team: 'North Melbourne' },
-  'Jy Simpkin':             { jersey: 5,  team: 'North Melbourne' },
-  'Nick Larkey':            { jersey: 9,  team: 'North Melbourne' },
+  'J. Horne-Francis':    { jersey: 1,  team: 'North Melbourne' },
+  'L. Davies-Uniacke':    { jersey: 6,  team: 'North Melbourne' },
+  'J. Simpkin':             { jersey: 5,  team: 'North Melbourne' },
+  'N. Larkey':            { jersey: 9,  team: 'North Melbourne' },
   // ── Gold Coast Suns ──────────────────────────────────────
-  'Touk Miller':            { jersey: 4,  team: 'Gold Coast' },
-  'Noah Anderson':          { jersey: 6,  team: 'Gold Coast' },
-  'Matt Rowell':            { jersey: 18, team: 'Gold Coast' },
-  'Ben King':               { jersey: 7,  team: 'Gold Coast' },
+  'T. Miller':            { jersey: 4,  team: 'Gold Coast' },
+  'N. Anderson':          { jersey: 6,  team: 'Gold Coast' },
+  'M. Rowell':            { jersey: 18, team: 'Gold Coast' },
+  'B. King':               { jersey: 7,  team: 'Gold Coast' },
   // ── St Kilda ─────────────────────────────────────────────
-  'Jack Steele':            { jersey: 4,  team: 'St Kilda' },
-  'Max King':               { jersey: 7,  team: 'St Kilda' },
-  'Jade Gresham':           { jersey: 6,  team: 'St Kilda' },
-  'Hunter Clark':           { jersey: 12, team: 'St Kilda' },
+  'J. Steele':            { jersey: 4,  team: 'St Kilda' },
+  'M. King':               { jersey: 7,  team: 'St Kilda' },
+  'J. Gresham':           { jersey: 6,  team: 'St Kilda' },
+  'H. Clark':           { jersey: 12, team: 'St Kilda' },
 };
 
 /* ================================================================
@@ -1890,16 +2063,16 @@ const MOCK_DATA = {
       venue: 'MCG',
       status: 'live',
       players: [
-        { id: 'p01', jersey: 4,  name: 'Dustin Martin',       pos: 'MID', score: 88  },
-        { id: 'p02', jersey: 12, name: 'Shai Bolton',          pos: 'FWD', score: 54  },
-        { id: 'p03', jersey: 8,  name: 'Jack Riewoldt',        pos: 'FWD', score: 62  },
-        { id: 'p04', jersey: 7,  name: 'Trent Cotchin',        pos: 'MID', score: 71  },
-        { id: 'p05', jersey: 22, name: 'Nick Vlastuin',        pos: 'DEF', score: 49  },
-        { id: 'p06', jersey: 14, name: 'Scott Pendlebury',     pos: 'MID', score: 102 },
-        { id: 'p07', jersey: 10, name: 'Darcy Moore',          pos: 'DEF', score: 58  },
-        { id: 'p08', jersey: 5,  name: 'Jordan De Goey',       pos: 'FWD', score: 76  },
-        { id: 'p09', jersey: 20, name: 'Brayden Maynard',      pos: 'DEF', score: 44  },
-        { id: 'p10', jersey: 33, name: 'Nick Daicos',          pos: 'MID', score: 118 },
+        { id: 'p01', jersey: 4,  name: 'D. Martin',       pos: 'MID', score: 88  },
+        { id: 'p02', jersey: 12, name: 'S. Bolton',          pos: 'FWD', score: 54  },
+        { id: 'p03', jersey: 8,  name: 'J. Riewoldt',        pos: 'FWD', score: 62  },
+        { id: 'p04', jersey: 7,  name: 'T. Cotchin',        pos: 'MID', score: 71  },
+        { id: 'p05', jersey: 22, name: 'N. Vlastuin',        pos: 'DEF', score: 49  },
+        { id: 'p06', jersey: 14, name: 'S. Pendlebury',     pos: 'MID', score: 102 },
+        { id: 'p07', jersey: 10, name: 'D. Moore',          pos: 'DEF', score: 58  },
+        { id: 'p08', jersey: 5,  name: 'J. De Goey',       pos: 'FWD', score: 76  },
+        { id: 'p09', jersey: 20, name: 'B. Maynard',      pos: 'DEF', score: 44  },
+        { id: 'p10', jersey: 33, name: 'N. Daicos',          pos: 'MID', score: 118 },
       ]
     },
     {
@@ -1911,12 +2084,12 @@ const MOCK_DATA = {
       venue: 'Marvel Stadium',
       status: 'live',
       players: [
-        { id: 'p11', jersey: 5,  name: 'Patrick Cripps',       pos: 'MID', score: 95  },
-        { id: 'p12', jersey: 3,  name: 'Harry McKay',          pos: 'FWD', score: 41  },
-        { id: 'p13', jersey: 9,  name: 'Sam Walsh',            pos: 'MID', score: 67  },
-        { id: 'p14', jersey: 8,  name: 'James Sicily',         pos: 'DEF', score: 74  },
-        { id: 'p15', jersey: 12, name: 'Jai Newcombe',         pos: 'MID', score: 83  },
-        { id: 'p16', jersey: 15, name: 'Dylan Moore',          pos: 'FWD', score: 52  },
+        { id: 'p11', jersey: 5,  name: 'P. Cripps',       pos: 'MID', score: 95  },
+        { id: 'p12', jersey: 3,  name: 'H. McKay',          pos: 'FWD', score: 41  },
+        { id: 'p13', jersey: 9,  name: 'S. Walsh',            pos: 'MID', score: 67  },
+        { id: 'p14', jersey: 8,  name: 'J. Sicily',         pos: 'DEF', score: 74  },
+        { id: 'p15', jersey: 12, name: 'J. Newcombe',         pos: 'MID', score: 83  },
+        { id: 'p16', jersey: 15, name: 'D. Moore',          pos: 'FWD', score: 52  },
       ]
     },
   ],
@@ -1950,13 +2123,16 @@ const MOCK_DATA = {
 
 /* ================================================================
    APP STATE
-   Central in-memory state store. Persisted to localStorage per profile.
+   Central in-memory state store. Active user persisted to localStorage
+   keyed by email. All other user data lives under fo_user_${email}.
    ================================================================ */
 const State = {
   isMockMode: false,
   activeView: 'watch',
-  activeProfile: null,     // { id, name, avatar, settings, team, customTeams, opponentTeam }
-  profiles: [],
+  activeUser: null,        // { email, name, settings, team, customTeams, opponentTeam }
+  // Legacy alias kept so downstream code using State.activeProfile still works
+  get activeProfile() { return this.activeUser; },
+  set activeProfile(v)  { this.activeUser = v; },
   currentGame: null,       // Game object from MOCK_DATA or live fetch
   liveGames: [],
   upcomingGames: [],
@@ -1972,7 +2148,9 @@ const State = {
 
 /* ================================================================
    LOCAL STORAGE HELPERS
-   All data persisted under "footyoverlay_v1" prefix
+   Global app-level keys live under "footyoverlay_v1_" prefix.
+   Per-user data lives under "fo_user_${email}_" prefix — this means
+   signing out and back in with the same email fully restores all data.
    ================================================================ */
 const LS_KEY = 'footyoverlay_v1';
 
@@ -1985,210 +2163,334 @@ function lsSet(key, val) {
   catch (e) { console.warn('LocalStorage write failed:', e); }
 }
 function lsClear() {
-  Object.keys(localStorage).filter(k => k.startsWith(LS_KEY))
+  // Clears only the active user's data, not other accounts stored on device
+  if (State.activeUser?.email) {
+    userLsClear(State.activeUser.email);
+  }
+  lsGet; // no-op reference to avoid removal by minifiers
+}
+
+/** Per-user localStorage key */
+function userKey(email, field) {
+  return `fo_user_${email.toLowerCase().trim()}_${field}`;
+}
+function userLsGet(email, field) {
+  try { return JSON.parse(localStorage.getItem(userKey(email, field))); }
+  catch { return null; }
+}
+function userLsSet(email, field, val) {
+  try { localStorage.setItem(userKey(email, field), JSON.stringify(val)); }
+  catch (e) { console.warn('LocalStorage write failed:', e); }
+}
+function userLsClear(email) {
+  const prefix = `fo_user_${email.toLowerCase().trim()}_`;
+  Object.keys(localStorage).filter(k => k.startsWith(prefix))
                             .forEach(k => localStorage.removeItem(k));
 }
 
 /* ================================================================
-   PROFILE STORE
-   Each profile is keyed by a UUID stored in the profiles list.
+   USER AUTH — Email-based soft identity system
    ================================================================ */
-function loadProfiles() {
-  State.profiles = lsGet('profiles') || [];
+
+/**
+ * Deterministically derive a hex background colour from an email string.
+ * Uses a simple hash so the same email always maps to the same colour,
+ * and the colour is always dark enough to contrast white text.
+ *
+ * @param {string} email
+ * @returns {string} hex colour e.g. "#3b5fa0"
+ */
+function emailToColour(email) {
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    hash = (hash << 5) - hash + email.charCodeAt(i);
+    hash |= 0; // to 32-bit int
+  }
+  // Use the hash to pick hue; fix saturation and lightness to readable range
+  const hue = Math.abs(hash) % 360;
+  return hslToHex(hue, 55, 38);
 }
 
-function saveProfiles() {
-  lsSet('profiles', State.profiles);
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const col = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * col).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
 }
 
-function createProfile(name, avatar) {
-  const id = `profile_${Date.now()}`;
-  const profile = {
-    id, name, avatar,
-    settings: {
-      scoringSystem: 'afl_fantasy',
-      overlayOpacity: 90,
-      overlayPosition: 'top-right',
-      toastsEnabled: true,
-      soundEnabled: false,
-      soundVolume: 60,
-      pollInterval: 30,
-    },
-    team: [],
-    customTeams: [],
+/**
+ * Derive initials from a display name.
+ * "L. Neale" → "LN", "Dustin" → "D"
+ */
+function nameToInitials(name) {
+  return name.trim().split(/\s+/)
+    .map(w => w[0]?.toUpperCase() || '')
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('');
+}
+
+/** Default user settings applied to every new account */
+function defaultSettings() {
+  return {
+    scoringSystem:  'afl_fantasy',
+    overlayOpacity: 90,
+    overlayPosition:'top-right',
+    toastsEnabled:  true,
+    soundEnabled:   false,
+    soundVolume:    60,
+    pollInterval:   30,
+  };
+}
+
+/**
+ * Load a user record from localStorage by email.
+ * If the email is seen for the first time, create a fresh record using
+ * the supplied displayName. If seen before, the stored name is used
+ * (displayName arg is ignored on subsequent logins).
+ *
+ * @param {string} email
+ * @param {string} displayName  - only used when creating a new record
+ * @returns {Object} user record
+ */
+function loadOrCreateUser(email, displayName) {
+  const stored = userLsGet(email, 'profile');
+  if (stored) {
+    // Returning user — restore full record
+    return stored;
+  }
+  // First time this email — create fresh record
+  const user = {
+    email:        email.toLowerCase().trim(),
+    name:         displayName.trim(),
+    settings:     defaultSettings(),
+    team:         [],
+    customTeams:  [],
     opponentTeam: [],
   };
-  State.profiles.push(profile);
-  saveProfiles();
-  return profile;
+  userLsSet(email, 'profile', user);
+  return user;
 }
 
-function setActiveProfile(profile) {
-  State.activeProfile = profile;
-  lsSet('activeProfileId', profile.id);
-  applyProfileSettings(profile);
+/**
+ * Persist the active user's record back to localStorage.
+ */
+function saveCurrentUser() {
+  if (!State.activeUser) return;
+  userLsSet(State.activeUser.email, 'profile', State.activeUser);
 }
 
-function applyProfileSettings(profile) {
-  const s = profile.settings;
-  // Scoring system
-  document.querySelectorAll('[name="scoring-system"]').forEach(r => {
-    r.checked = (r.value === s.scoringSystem);
+// Alias kept for compatibility with downstream callers
+function saveCurrentProfile() { saveCurrentUser(); }
+
+/**
+ * Activate a user session: update State, update header UI, apply settings.
+ */
+function activateUser(user) {
+  State.activeUser = user;
+  // Remember who was last active so we can skip the login screen on reload
+  lsSet('activeEmail', user.email);
+  State.customTeams = [...(user.customTeams || [])];
+  updateHeaderUser(user);
+  applyProfileSettings(user);
+}
+
+function applyProfileSettings(user) {
+  const s = (user && user.settings) ? user.settings : defaultSettings();
+
+  // Scoring system radio buttons
+  document.querySelectorAll('[name="scoring-system"]').forEach(radio => {
+    radio.checked = (radio.value === (s.scoringSystem || 'afl_fantasy'));
   });
-  // Overlay opacity
-  const opEl = document.getElementById('setting-opacity');
-  if (opEl) { opEl.value = s.overlayOpacity; updateOpacityDisplay(s.overlayOpacity); }
-  const overlayOpSlider = document.getElementById('overlay-opacity-slider');
-  if (overlayOpSlider) overlayOpSlider.value = s.overlayOpacity;
-  setOverlayOpacity(s.overlayOpacity);
-  // Overlay position
+
+  // Overlay opacity (syncs both the settings slider and the overlay's own slider)
+  const opacity = s.overlayOpacity ?? 90;
+  const opacitySlider = document.getElementById('setting-opacity');
+  if (opacitySlider) opacitySlider.value = opacity;
+  const overlaySlider = document.getElementById('overlay-opacity-slider');
+  if (overlaySlider) overlaySlider.value = opacity;
+  setOverlayOpacity(opacity);
+  updateOpacityDisplay(opacity);
+
+  // Overlay position dropdown
   const posEl = document.getElementById('setting-position');
-  if (posEl) posEl.value = s.overlayPosition;
-  // Toggles
-  setToggle('setting-toasts', s.toastsEnabled);
-  setToggle('setting-sound', s.soundEnabled);
+  if (posEl) posEl.value = s.overlayPosition || 'top-right';
+
+  // Notification toggles
+  const toastsEl = document.getElementById('setting-toasts');
+  if (toastsEl) toastsEl.checked = s.toastsEnabled !== false; // default true
+
+  const soundEl = document.getElementById('setting-sound');
+  if (soundEl) soundEl.checked = !!s.soundEnabled;
+
   const volRow = document.getElementById('sound-volume-row');
   if (volRow) volRow.style.display = s.soundEnabled ? 'flex' : 'none';
+
   const volEl = document.getElementById('setting-volume');
-  if (volEl) { volEl.value = s.soundVolume; updateVolumeDisplay(s.soundVolume); }
-  // Poll interval
+  const volume = s.soundVolume ?? 60;
+  if (volEl) volEl.value = volume;
+  updateVolumeDisplay(volume);
+
+  // Poll interval dropdown
   const pollEl = document.getElementById('setting-poll-interval');
-  if (pollEl) pollEl.value = s.pollInterval;
-  // Profile avatar in header
-  document.getElementById('profile-avatar-display').textContent = profile.avatar;
-  // Custom teams
-  State.customTeams = [...(profile.customTeams || [])];
+  if (pollEl) pollEl.value = s.pollInterval || 30;
+
+  // Restore custom teams into State
+  State.customTeams = [...(user.customTeams || [])];
 }
 
-function saveCurrentProfile() {
-  if (!State.activeProfile) return;
-  const idx = State.profiles.findIndex(p => p.id === State.activeProfile.id);
-  if (idx !== -1) {
-    State.profiles[idx] = State.activeProfile;
-    saveProfiles();
+/**
+ * Update the header chip to reflect the signed-in user.
+ */
+function updateHeaderUser(user) {
+  const wrap    = document.getElementById('user-menu-wrap');
+  const badge   = document.getElementById('user-initials-badge');
+  const chipName  = document.getElementById('user-chip-name');
+  const chipEmail = document.getElementById('user-chip-email');
+
+  badge.textContent  = nameToInitials(user.name);
+  badge.style.background = emailToColour(user.email);
+  chipName.textContent   = user.name;
+  chipEmail.textContent  = user.email;
+  wrap.style.display     = 'flex';
+}
+
+/**
+ * Sign the current user out: clears the active session from memory
+ * and from the "last active" key, but keeps all their localStorage
+ * data intact so re-entering the same email restores everything.
+ */
+function signOut() {
+  State.activeUser = null;
+  lsSet('activeEmail', null);
+  stopPolling();
+  document.getElementById('user-menu-wrap').style.display = 'none';
+  openLoginScreen();
+}
+
+/* ================================================================
+   LOGIN SCREEN
+   ================================================================ */
+function openLoginScreen() {
+  document.getElementById('login-screen').classList.add('open');
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-name').value  = '';
+  // Pre-fill email if we know it from a previous session (switch-account path)
+  const lastEmail = lsGet('activeEmail');
+  if (lastEmail && lastEmail !== 'null') {
+    document.getElementById('login-email').value = lastEmail;
   }
+  // Focus email field after paint
+  requestAnimationFrame(() => document.getElementById('login-email').focus());
 }
 
-function setToggle(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.checked = !!val;
+function closeLoginScreen() {
+  document.getElementById('login-screen').classList.remove('open');
 }
+
+document.getElementById('btn-login').addEventListener('click', handleLogin);
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-name').focus();
+});
+document.getElementById('login-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+});
+
+function handleLogin() {
+  const emailEl = document.getElementById('login-email');
+  const nameEl  = document.getElementById('login-name');
+  const email   = emailEl.value.trim().toLowerCase();
+  const name    = nameEl.value.trim();
+
+  // Validate email
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    emailEl.focus();
+    emailEl.style.borderColor = 'var(--accent-red)';
+    setTimeout(() => emailEl.style.borderColor = '', 1500);
+    return;
+  }
+
+  // Name: required on first-ever login; optional for returning users
+  // (we'll use the stored name if field is blank)
+  const stored = userLsGet(email, 'profile');
+  const resolvedName = name || stored?.name || email.split('@')[0];
+
+  const user = loadOrCreateUser(email, resolvedName);
+  // If a name was provided, update it (lets users change their display name)
+  if (name) user.name = name;
+
+  closeLoginScreen();
+  activateUser(user);
+  if (user.team?.length) renderTeamTable(user.team);
+  renderWatchTab(State.liveGames, State.upcomingGames);
+  startPolling();
+  showView('watch');
+}
+
+/* ================================================================
+   USER MENU DROPDOWN
+   ================================================================ */
+const userChip     = document.getElementById('user-chip');
+const userDropdown = document.getElementById('user-dropdown');
+
+userChip.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = userDropdown.classList.toggle('open');
+  userChip.setAttribute('aria-expanded', isOpen);
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  userChip.setAttribute('aria-expanded', 'false');
+});
+userDropdown.addEventListener('click', e => e.stopPropagation());
+
+document.getElementById('btn-switch-account').addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  // Keep data — just return to login screen without clearing activeEmail
+  State.activeUser = null;
+  stopPolling();
+  document.getElementById('user-menu-wrap').style.display = 'none';
+  openLoginScreen();
+});
+
+document.getElementById('btn-sign-out').addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  signOut();
+});
 
 /* ================================================================
    VIEW MANAGEMENT
    SPA navigation — swaps .active class on <section> elements.
    ================================================================ */
 const VIEW_IDS = {
-  watch:       'view-watch',
-  team:        'view-team',
-  settings:    'view-settings',
+  watch:          'view-watch',
+  team:           'view-team',
+  settings:       'view-settings',
   'game-detail':  'view-game-detail',
-  'customise': 'view-customise',
+  'customise':    'view-customise',
 };
 
 function showView(viewName) {
-  // Hide all views
+  if (AUTH_REQUIRED_VIEWS.has(viewName) && !State.activeUser) {
+    openLoginScreen();
+    return;
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  // Show target
   const el = document.getElementById(VIEW_IDS[viewName] || VIEW_IDS['watch']);
   if (el) el.classList.add('active');
   State.activeView = viewName;
-  // Update nav tab states
   document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.view === viewName);
   });
-  // Show/hide overlay toggle button
   const overlayToggleBtn = document.getElementById('overlay-toggle-btn');
   if (overlayToggleBtn) overlayToggleBtn.style.display = viewName === 'game-detail' ? 'flex' : 'none';
 }
-
-/* ================================================================
-   PROFILE SELECTOR UI
-   ================================================================ */
-function openProfileSelector() {
-  renderProfilesGrid();
-  document.getElementById('profile-selector').classList.add('open');
-}
-
-function closeProfileSelector() {
-  document.getElementById('profile-selector').classList.remove('open');
-}
-
-function renderProfilesGrid() {
-  const grid = document.getElementById('profiles-grid');
-  grid.innerHTML = '';
-  State.profiles.forEach(profile => {
-    const card = document.createElement('button');
-    card.className = 'profile-card';
-    card.setAttribute('role', 'listitem');
-    card.tabIndex = 0;
-    card.setAttribute('aria-label', `Select profile: ${profile.name}`);
-    card.innerHTML = `
-      <div class="profile-avatar" style="background:rgba(59,130,246,0.1)">
-        ${profile.avatar}
-      </div>
-      <span class="profile-name">${escHtml(profile.name)}</span>
-    `;
-    card.addEventListener('click', () => {
-      setActiveProfile(profile);
-      closeProfileSelector();
-    });
-    grid.appendChild(card);
-  });
-
-  // Add profile card
-  const addCard = document.createElement('button');
-  addCard.className = 'profile-card add-profile-card';
-  addCard.tabIndex = 0;
-  addCard.setAttribute('aria-label', 'Add new profile');
-  addCard.innerHTML = `
-    <div class="profile-avatar">+</div>
-    <span class="profile-name">Add Profile</span>
-  `;
-  addCard.addEventListener('click', openAddProfileModal);
-  grid.appendChild(addCard);
-}
-
-/* ================================================================
-   ADD PROFILE MODAL
-   ================================================================ */
-function openAddProfileModal() {
-  // Populate avatar picker
-  const picker = document.getElementById('avatar-picker');
-  picker.innerHTML = '';
-  AVATAR_OPTIONS.forEach((emoji, i) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'overlay-btn';
-    btn.style.cssText = 'width:40px;height:40px;font-size:1.4rem;border-radius:8px;';
-    btn.textContent = emoji;
-    btn.setAttribute('aria-label', `Choose avatar: ${emoji}`);
-    btn.addEventListener('click', () => {
-      picker.querySelectorAll('button').forEach(b => b.style.borderColor = '');
-      btn.style.borderColor = 'var(--accent-blue)';
-      picker.dataset.selected = emoji;
-    });
-    // Default select first
-    if (i === 0) {
-      btn.style.borderColor = 'var(--accent-blue)';
-      picker.dataset.selected = emoji;
-    }
-    picker.appendChild(btn);
-  });
-
-  document.getElementById('new-profile-name').value = '';
-  openModal('modal-add-profile');
-}
-
-document.getElementById('btn-create-profile').addEventListener('click', () => {
-  const name = document.getElementById('new-profile-name').value.trim();
-  if (!name) { alert('Please enter a profile name.'); return; }
-  const avatar = document.getElementById('avatar-picker').dataset.selected || '😊';
-  const profile = createProfile(name, avatar);
-  closeModal('modal-add-profile');
-  setActiveProfile(profile);
-  closeProfileSelector();
-});
 
 /* ================================================================
    MODAL HELPERS
@@ -2208,13 +2510,11 @@ document.querySelectorAll('[data-modal]').forEach(btn => {
 // Close modal on backdrop click
 document.querySelectorAll('.modal-backdrop').forEach(bd => {
   bd.addEventListener('click', e => {
-    if (e.target === bd) {
-      bd.classList.remove('open');
-    }
+    if (e.target === bd) bd.classList.remove('open');
   });
 });
 
-// Escape key closes modals
+// Escape key closes modals (but not the login screen — user must log in)
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
@@ -2243,7 +2543,7 @@ document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
   });
 });
 
-document.getElementById('profile-btn').addEventListener('click', openProfileSelector);
+
 
 /* ================================================================
    GAME CARD RENDERING
@@ -2361,49 +2661,45 @@ document.getElementById('btn-save-opponent').addEventListener('click', () => {
   showToast('📋', 'Opponent team saved', `${State.activeProfile.opponentTeam.length} players imported`, 0);
 });
 
-document.getElementById('btn-customise-players').addEventListener('click', () => {
-  showView('customise');
-  renderCustomTeams();
-});
-
 // Begin Overlay
 document.getElementById('btn-begin-overlay').addEventListener('click', () => {
   if (!State.currentGame) return;
-  if (State.customTeams.length === 0) {
-    showToast('⚠️', 'No teams configured', 'Add at least one custom team first', 0);
+  const hasSelections = State.scoreboardMode ||
+    State.customTeams.some(t => t.playerIds.length > 0);
+  if (!hasSelections) {
+    showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0);
     return;
   }
   activateOverlay();
 });
 
 /* ================================================================
-   CUSTOMISE PLAYERS (View 3)
-   ================================================================ */
-document.getElementById('customise-back').addEventListener('click', () => showView('game-detail'));
+   CUSTOMISE PLAYERS (View 3) — dual-panel picker
+   ================================================================
 
-document.getElementById('btn-add-team').addEventListener('click', () => {
-  if (State.customTeams.length >= 5) {
-    showToast('⚠️', 'Max 5 teams', 'Remove a team to add another', 0);
-    return;
-  }
-  const newTeam = {
-    id: `team_${Date.now()}`,
-    name: `My Team ${State.customTeams.length + 1}`,
-    color: ['#3b82f6','#00ff88','#ffb800','#ef4444','#a855f7'][State.customTeams.length],
-    playerIds: [],
-    collapsed: false,
-  };
-  State.customTeams.push(newTeam);
-  renderCustomTeams();
-});
+   ARCHITECTURE:
+   Instead of user-created named teams, we always produce exactly two
+   tracking entries in State.customTeams — one per AFL team in the
+   current game. Each entry has the same shape the overlay already
+   expects: { id, name, color, playerIds[] }.
+
+   The two entries are keyed by team side ('teamA' / 'teamB') and are
+   either created fresh or reused if they already exist, so navigating
+   away and back preserves selections.
+
+   "Full Scoreboard Mode" is unchanged — it resets customTeams and
+   sets State.scoreboardMode = true so the overlay shows every player.
+   ================================================================ */
+
+document.getElementById('customise-back').addEventListener('click', () => showView('game-detail'));
 
 document.getElementById('btn-scoreboard-mode').addEventListener('click', () => {
   showConfirm(
-    'Full Scoreboard Mode resets all custom teams and shows complete player lists. Toaster notifications will be disabled. Continue?',
+    'Full Scoreboard Mode resets all selections and shows every player. Toaster notifications will be disabled. Continue?',
     () => {
       State.scoreboardMode = true;
       State.customTeams = [];
-      renderCustomTeams();
+      renderPickPanels();
       showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0);
     }
   );
@@ -2417,134 +2713,261 @@ document.getElementById('btn-save-customise').addEventListener('click', () => {
   showView('game-detail');
 });
 
-function renderCustomTeams() {
-  const container = document.getElementById('custom-teams-container');
-  const countLabel = document.getElementById('team-count-label');
-  countLabel.textContent = `${State.customTeams.length} / 5 teams`;
-  container.innerHTML = '';
+/**
+ * Ensure State.customTeams has exactly two entries — one for teamA and
+ * one for teamB in the current game — preserving any existing selections.
+ * Called before rendering so the data is always in a known shape.
+ */
+function ensureGameTeams() {
+  if (!State.currentGame) return;
+  const { teamA, teamB } = State.currentGame;
 
-  if (State.customTeams.length === 0) {
-    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div>
-      <p>No teams yet. Click "+ Add Team" to get started.</p></div>`;
+  ['teamA', 'teamB'].forEach(side => {
+    const afl = State.currentGame[side]; // { name, color, ... }
+    const existing = State.customTeams.find(t => t.id === `game_${side}`);
+    if (!existing) {
+      State.customTeams.push({
+        id:        `game_${side}`,
+        name:      afl.name,
+        color:     afl.color,
+        playerIds: [],
+      });
+    } else {
+      // Keep selections; refresh name/colour in case game data changed
+      existing.name  = afl.name;
+      existing.color = afl.color;
+    }
+  });
+
+  // Remove any stale entries that don't belong to the current game
+  // (e.g. leftover from a different game in the same session)
+  State.customTeams = State.customTeams.filter(t =>
+    t.id === 'game_teamA' || t.id === 'game_teamB'
+  );
+}
+
+/**
+ * Render the two side-by-side pick panels.
+ * Each panel lists the players for one AFL team and uses checkboxes
+ * to add/remove them from that team's tracking entry.
+ */
+function renderPickPanels() {
+  const wrap = document.getElementById('pick-panels-wrap');
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) {
+    wrap.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+      <div class="empty-icon">🏉</div>
+      <p>No game selected. Go back and tap a live game card first.</p>
+    </div>`;
     return;
   }
 
-  State.customTeams.forEach((team, idx) => {
-    const card = document.createElement('div');
-    card.className = `custom-team-card${team.collapsed ? ' collapsed' : ''}`;
-    card.setAttribute('role', 'listitem');
+  ensureGameTeams();
 
-    // Get all players in current game
-    const gamePlayers = State.currentGame ? State.currentGame.players : [];
+  ['teamA', 'teamB'].forEach(side => {
+    const afl     = State.currentGame[side];
+    const entry   = State.customTeams.find(t => t.id === `game_${side}`);
+    // Players belonging to this AFL team. The game's .players array mixes
+    // both teams; we split them by whether they appear in each team's side.
+    // FanFooty data keeps teamA and teamB players as separate arrays when
+    // available; for the merged mock format we split them down the middle.
+    const players = getPlayersForSide(side);
 
-    const playerListHtml = gamePlayers.map(p => {
-      const selected = team.playerIds.includes(p.id);
-      return `<div class="player-select-item${selected ? ' selected' : ''}" 
-                   data-player-id="${p.id}" role="option" 
-                   aria-selected="${selected}" tabindex="0">
-        <span class="player-jersey">#${p.jersey}</span>
-        <span>${escHtml(p.name)}</span>
-        <span class="text-muted text-sm">${p.pos}</span>
-        <span class="player-check">✓</span>
-      </div>`;
-    }).join('');
+    const panel = document.createElement('div');
+    panel.className = 'pick-panel';
+    panel.setAttribute('role', 'region');
+    panel.setAttribute('aria-label', `${afl.name} players`);
 
-    card.innerHTML = `
-      <div class="custom-team-header" style="border-left-color:${team.color}" 
-           role="button" tabindex="0" aria-expanded="${!team.collapsed}" 
-           aria-label="Toggle ${escHtml(team.name)}">
-        <div class="custom-team-header-left">
-          <div class="custom-team-name-display" style="color:${team.color}">${escHtml(team.name)}</div>
-          <span class="custom-team-count">${team.playerIds.length} players</span>
-        </div>
-        <div style="display:flex;gap:8px;">
-          <span style="color:var(--text-muted);font-size:1rem;">${team.collapsed ? '▼' : '▲'}</span>
-          <button class="btn btn-danger btn-sm" data-delete-idx="${idx}" aria-label="Delete ${escHtml(team.name)}">✕</button>
-        </div>
-      </div>
-      <div class="custom-team-body">
-        <div class="flex gap-12 mb-16" style="flex-wrap:wrap">
-          <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
-            <label>Team Name</label>
-            <input type="text" class="team-name-input" value="${escHtml(team.name)}" 
-                   data-team-idx="${idx}" aria-label="Team name" />
-          </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label>Colour</label>
-            <input type="color" class="team-color-input" value="${team.color}" 
-                   data-team-idx="${idx}" style="height:42px;width:60px;border-radius:8px;cursor:pointer;border:1px solid var(--border);background:transparent;padding:2px;" 
-                   aria-label="Team colour" />
-          </div>
-        </div>
-        ${gamePlayers.length > 0
-          ? `<label style="margin-bottom:6px;display:block">Select Players</label>
-             <div class="player-select-list" data-team-idx="${idx}" role="listbox" aria-label="Player selection" aria-multiselectable="true">
-               ${playerListHtml}
-             </div>`
-          : `<p class="text-muted text-sm">Select a live game first to see available players.</p>`
-        }
-      </div>
-    `;
+    // ── Panel header ─────────────────────────────────────────────────────
+    const header = document.createElement('div');
+    header.className = 'pick-panel-header';
+    header.style.borderLeftColor = afl.color;
 
-    // Toggle collapse
-    const header = card.querySelector('.custom-team-header');
-    header.addEventListener('click', e => {
-      if (e.target.closest('[data-delete-idx]')) return;
-      team.collapsed = !team.collapsed;
-      renderCustomTeams();
+    const title = document.createElement('span');
+    title.className = 'pick-panel-title';
+    title.style.color = afl.color;
+    title.textContent = afl.name;
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'pick-panel-count';
+    countBadge.id = `pick-count-${side}`;
+    countBadge.textContent = `${entry.playerIds.length} / ${players.length}`;
+
+    header.appendChild(title);
+    header.appendChild(countBadge);
+    panel.appendChild(header);
+
+    // ── Scrollable player list ────────────────────────────────────────────
+    const list = document.createElement('div');
+    list.className = 'pick-list';
+    list.setAttribute('role', 'listbox');
+    list.setAttribute('aria-multiselectable', 'true');
+    list.setAttribute('aria-label', `${afl.name} player list`);
+
+    // "Select all / deselect all" toggle row
+    const allRow = document.createElement('div');
+    allRow.className = 'pick-select-all';
+    allRow.setAttribute('role', 'button');
+    allRow.tabIndex = 0;
+    allRow.setAttribute('aria-label', 'Toggle select all players');
+
+    const allCheck = document.createElement('div');
+    allCheck.className = 'pick-checkbox';
+
+    const allLabel = document.createElement('span');
+    allLabel.textContent = 'Select all';
+
+    allRow.appendChild(allCheck);
+    allRow.appendChild(allLabel);
+    list.appendChild(allRow);
+
+    // Individual player rows
+    players.forEach(p => {
+      const row = buildPlayerRow(p, entry, side, countBadge, allCheck, players);
+      list.appendChild(row);
     });
-    header.addEventListener('keydown', e => {
-      if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('[data-delete-idx]')) {
-        team.collapsed = !team.collapsed;
-        renderCustomTeams();
+
+    // Wire up "select all" toggle after rows exist
+    const toggleAll = () => {
+      const allSelected = players.every(p => entry.playerIds.includes(p.id));
+      if (allSelected) {
+        // Deselect all
+        players.forEach(p => {
+          const idx = entry.playerIds.indexOf(p.id);
+          if (idx !== -1) entry.playerIds.splice(idx, 1);
+        });
+      } else {
+        // Select all that aren't already in
+        players.forEach(p => {
+          if (!entry.playerIds.includes(p.id)) entry.playerIds.push(p.id);
+        });
       }
+      // Re-render all rows to sync visual state
+      renderPickPanels();
+    };
+    allRow.addEventListener('click', toggleAll);
+    allRow.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAll(); }
     });
 
-    // Delete button
-    card.querySelector('[data-delete-idx]').addEventListener('click', (e) => {
-      e.stopPropagation();
-      State.customTeams.splice(idx, 1);
-      renderCustomTeams();
-    });
-
-    // Name input
-    card.querySelector('.team-name-input').addEventListener('input', e => {
-      State.customTeams[idx].name = e.target.value;
-      // Update header display without full re-render
-      card.querySelector('.custom-team-name-display').textContent = e.target.value;
-    });
-
-    // Color input
-    card.querySelector('.team-color-input').addEventListener('input', e => {
-      State.customTeams[idx].color = e.target.value;
-      header.style.borderLeftColor = e.target.value;
-      card.querySelector('.custom-team-name-display').style.color = e.target.value;
-    });
-
-    // Player multi-select
-    card.querySelectorAll('.player-select-item').forEach(item => {
-      const togglePlayer = () => {
-        const pid = item.dataset.playerId;
-        const pidIdx = team.playerIds.indexOf(pid);
-        if (pidIdx === -1) {
-          team.playerIds.push(pid);
-          item.classList.add('selected');
-          item.setAttribute('aria-selected', 'true');
-        } else {
-          team.playerIds.splice(pidIdx, 1);
-          item.classList.remove('selected');
-          item.setAttribute('aria-selected', 'false');
-        }
-        // Update count
-        card.querySelector('.custom-team-count').textContent = `${team.playerIds.length} players`;
-      };
-      item.addEventListener('click', togglePlayer);
-      item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') togglePlayer(); });
-    });
-
-    container.appendChild(card);
+    panel.appendChild(list);
+    wrap.appendChild(panel);
   });
 }
+
+/**
+ * Build a single player row element for a pick panel.
+ *
+ * @param {Object}  p           - player object { id, jersey, name, pos }
+ * @param {Object}  entry       - the customTeams entry for this side
+ * @param {string}  side        - 'teamA' | 'teamB'
+ * @param {Element} countBadge  - the panel count badge to update on toggle
+ * @param {Element} allCheck    - the "select all" checkbox to update on toggle
+ * @param {Array}   allPlayers  - full player list for this side (for all-check sync)
+ * @returns {HTMLElement}
+ */
+function buildPlayerRow(p, entry, side, countBadge, allCheck, allPlayers) {
+  const isSelected = entry.playerIds.includes(p.id);
+
+  const row = document.createElement('div');
+  row.className = `pick-row${isSelected ? ' selected' : ''}`;
+  row.setAttribute('role', 'option');
+  row.setAttribute('aria-selected', String(isSelected));
+  row.setAttribute('aria-label', `${p.name}, jersey ${p.jersey || '?'}`);
+  row.tabIndex = 0;
+  row.dataset.playerId = p.id;
+
+  const checkbox = document.createElement('div');
+  checkbox.className = 'pick-checkbox';
+  checkbox.setAttribute('aria-hidden', 'true');
+
+  const jersey = document.createElement('span');
+  jersey.className = 'pick-jersey';
+  jersey.textContent = p.jersey ? `${p.jersey}` : '–';
+
+  const name = document.createElement('span');
+  name.className = 'pick-name';
+  name.textContent = formatPlayerName(p.name);
+
+  const pos = document.createElement('span');
+  pos.className = 'pick-pos';
+  pos.textContent = p.pos || '';
+
+  row.appendChild(checkbox);
+  row.appendChild(jersey);
+  row.appendChild(name);
+  row.appendChild(pos);
+
+  const toggle = () => {
+    const idx = entry.playerIds.indexOf(p.id);
+    if (idx === -1) {
+      entry.playerIds.push(p.id);
+      row.classList.add('selected');
+      row.setAttribute('aria-selected', 'true');
+    } else {
+      entry.playerIds.splice(idx, 1);
+      row.classList.remove('selected');
+      row.setAttribute('aria-selected', 'false');
+    }
+    // Update the panel count badge
+    const total = allPlayers.length;
+    countBadge.textContent = `${entry.playerIds.length} / ${total}`;
+    // Sync the "select all" checkbox visual state
+    const allNowSelected = allPlayers.every(pl => entry.playerIds.includes(pl.id));
+    allCheck.style.background    = allNowSelected ? 'var(--accent-blue)' : '';
+    allCheck.style.borderColor   = allNowSelected ? 'var(--accent-blue)' : '';
+  };
+
+  row.addEventListener('click', toggle);
+  row.addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+  });
+
+  return row;
+}
+
+/**
+ * Return the player list for one side of the current game.
+ *
+ * When game data comes from the scraper, each team may carry its own
+ * players array (game.teamAPlayers / game.teamBPlayers). The mock data
+ * uses a single merged game.players array; in that case we split them
+ * by position in the array — the first half goes to teamA, second to teamB.
+ *
+ * @param {'teamA'|'teamB'} side
+ * @returns {Object[]} array of player objects
+ */
+function getPlayersForSide(side) {
+  const g = State.currentGame;
+  if (!g) return [];
+
+  // Prefer explicit side arrays (live scraper output)
+  if (g.teamAPlayers && g.teamBPlayers) {
+    return side === 'teamA' ? g.teamAPlayers : g.teamBPlayers;
+  }
+
+  // Fallback: split the merged players array down the middle.
+  // Mock data interleaves the two teams so we sort by whether the player's
+  // id starts with the respective team letter, or simply halve the array.
+  const all = g.players || [];
+  if (all.length === 0) return [];
+
+  // Try splitting by team name embedded in player id (e.g. 'p01'..'p05' vs 'p06'..'p10')
+  // If ids carry no team info, split by position in array.
+  const half = Math.ceil(all.length / 2);
+  return side === 'teamA' ? all.slice(0, half) : all.slice(half);
+}
+
+/* Wire renderPickPanels into the btn-customise-players click handler.
+   The original call was renderCustomTeams() — we replace that here
+   without touching the handler's surrounding code. */
+document.getElementById('btn-customise-players').addEventListener('click', () => {
+  // Reset scoreboardMode when entering the pick view deliberately
+  State.scoreboardMode = false;
+  showView('customise');
+  renderPickPanels();
+});
 
 /* ================================================================
    OVERLAY (View 4)
@@ -2661,7 +3084,7 @@ function renderOverlayTables() {
     const rows = players.map(p => `
       <tr>
         <td style="color:var(--text-muted)">#${p.jersey}</td>
-        <td>${escHtml(p.name)}</td>
+        <td>${escHtml(formatPlayerName(p.name))}</td>
         <td id="score-cell-${team.id}-${p.id}" class="player-score-cell">
           ${p.score}
         </td>
@@ -2878,7 +3301,7 @@ function simulateMockData() {
         // Only fire toast if this player is in a tracked team
         const isTracked = State.customTeams.some(t => t.playerIds.includes(p.id));
         if (isTracked && State.overlayVisible) {
-          showToast('⚡', p.name, action.label, delta);
+          showToast('⚡', formatPlayerName(p.name), action.label, delta);
         }
       }
     });
@@ -2995,11 +3418,11 @@ document.getElementById('setting-poll-interval').addEventListener('change', e =>
 
 document.getElementById('btn-clear-data').addEventListener('click', () => {
   showConfirm(
-    '⚠️ This will permanently delete all profiles, teams, and settings. Are you sure?',
+    '⚠️ This will permanently delete all locally stored data for your account. Are you sure?',
     () => {
       stopPolling();
-      lsClear();
-      location.reload();
+      if (State.activeUser?.email) userLsClear(State.activeUser.email);
+      signOut();
     }
   );
 });
@@ -3016,9 +3439,280 @@ document.getElementById('btn-cancel-import-team').addEventListener('click', () =
   document.getElementById('import-team-panel').style.display = 'none';
 });
 
+/* ================================================================
+   SCREENSHOT IMPORT — reads a team screenshot via Claude Vision
+   ================================================================ */
+
+/**
+ * The hidden <input type="file"> is the actual file picker.
+ * The visible "Import from Screenshot" button simply triggers it,
+ * keeping the native file dialog behaviour with no custom UI needed.
+ */
+document.getElementById('btn-import-screenshot').addEventListener('click', () => {
+  // Reset any previous state before opening the picker
+  screenshotSetState('idle');
+  document.getElementById('screenshot-file-input').value = ''; // allow re-selecting same file
+  document.getElementById('screenshot-file-input').click();
+});
+
+/** Re-trigger the file picker from the "Try another image" button */
+document.getElementById('btn-screenshot-retry').addEventListener('click', () => {
+  screenshotSetState('idle');
+  document.getElementById('screenshot-file-input').value = '';
+  document.getElementById('screenshot-file-input').click();
+});
+
+/**
+ * Main handler: fires when the user picks a file.
+ * Flow: file → base64 → Anthropic API → parse JSON → confirm checklist → import
+ */
+document.getElementById('screenshot-file-input').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  screenshotSetState('loading');
+
+  // ── Step 1: Read the file as base64 ──────────────────────────────────────
+  let base64Data;
+  try {
+    base64Data = await fileToBase64(file);
+  } catch (err) {
+    screenshotSetError('Could not read the selected file.');
+    return;
+  }
+
+  // ── Step 2: Send to Claude Vision ────────────────────────────────────────
+  // Uses the same fetch pattern as the rest of the app.
+  // The Anthropic API key is injected by the proxy — no explicit header needed.
+  let extractedNames;
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: 'You are a data extractor. The user will give you a screenshot of either a SuperCoach or AFL Fantasy team page. Extract every player\'s full name and return ONLY a JSON array of strings, one per player, in this exact format with no other text or markdown:\n["P. Dangerfield", "M. Bontempelli", ...]',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: file.type || 'image/jpeg',
+                  data: base64Data,
+                },
+              },
+              {
+                type: 'text',
+                text: 'Extract all player names from this fantasy team screenshot.',
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const errBody = await response.text().catch(() => '');
+      throw new Error(`API ${response.status}${errBody ? ': ' + errBody.slice(0, 120) : ''}`);
+    }
+
+    const data = await response.json();
+
+    // The model returns a single text block containing the JSON array
+    const rawText = (data.content ?? [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('')
+      .trim();
+
+    // Strip any accidental markdown fences the model might have added
+    const cleaned = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+
+    extractedNames = JSON.parse(cleaned);
+
+    if (!Array.isArray(extractedNames) || extractedNames.length === 0) {
+      throw new Error('Empty or malformed response from model');
+    }
+
+    // Sanitise: keep only non-empty strings, deduplicate
+    extractedNames = [...new Set(
+      extractedNames.map(n => String(n).trim()).filter(Boolean)
+    )];
+
+  } catch (err) {
+    console.warn('[FootyOverlay] Screenshot import failed:', err.message);
+    screenshotSetError(
+      'Couldn\'t read this screenshot — try cropping closer to the player list.'
+    );
+    return;
+  }
+
+  // ── Step 3: Show confirmation checklist ──────────────────────────────────
+  screenshotShowConfirm(extractedNames);
+});
+
+/**
+ * "Confirm & Import" — takes checked names and runs the normal import flow.
+ * Delegates to the same path as the manual text import so jersey lookup
+ * and renderTeamTable() are triggered identically.
+ */
+document.getElementById('btn-screenshot-confirm').addEventListener('click', async () => {
+  // Collect names that are still checked
+  const checkedNames = [
+    ...document.querySelectorAll('#screenshot-player-list .screenshot-player-check:checked'),
+  ].map(cb => cb.dataset.name).filter(Boolean);
+
+  if (checkedNames.length === 0) {
+    // Nothing checked — shake the button and bail
+    const btn = document.getElementById('btn-screenshot-confirm');
+    btn.style.animation = 'none';
+    requestAnimationFrame(() => {
+      btn.style.animation = 'shake 0.35s ease';
+    });
+    return;
+  }
+
+  // Build player objects exactly as the manual import handler does
+  const players = checkedNames.map((name, i) => ({
+    id:         `import_${i}_${Date.now()}`,
+    name,
+    jersey:     null,
+    team:       null,
+    weekScore:  0,
+    totalScore: 0,
+  }));
+
+  if (State.activeProfile) {
+    State.activeProfile.team = players;
+    saveCurrentProfile();
+  }
+
+  // Close the import panel and render the table with spinners
+  document.getElementById('import-team-panel').style.display = 'none';
+  screenshotSetState('idle');
+  renderTeamTable(players);
+
+  // Kick off jersey lookup exactly as the manual flow does
+  await lookupJerseyNumbers(players);
+});
+
+/**
+ * Toggle all checkboxes in the confirmation list.
+ * Button label flips between "Deselect all" / "Select all".
+ */
+document.getElementById('btn-screenshot-select-all').addEventListener('click', () => {
+  const btn = document.getElementById('btn-screenshot-select-all');
+  const checkboxes = document.querySelectorAll('#screenshot-player-list .screenshot-player-check');
+  const anyChecked = [...checkboxes].some(cb => cb.checked);
+  checkboxes.forEach(cb => { cb.checked = !anyChecked; });
+  btn.textContent = anyChecked ? 'Select all' : 'Deselect all';
+});
+
+/* ── Helpers ──────────────────────────────────────────────────────────────── */
+
+/**
+ * Read a File object and return its base64-encoded content (data portion only).
+ * @param {File} file
+ * @returns {Promise<string>}
+ */
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result.split(',')[1]); // strip "data:...;base64,"
+    reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Control which sub-panel is visible within #screenshot-status.
+ * @param {'idle'|'loading'|'error'|'confirm'} state
+ */
+function screenshotSetState(state) {
+  const wrap    = document.getElementById('screenshot-status');
+  const loading = document.getElementById('screenshot-loading');
+  const error   = document.getElementById('screenshot-error');
+  const confirm = document.getElementById('screenshot-confirm');
+
+  // Hide everything first
+  wrap.style.display    = state === 'idle' ? 'none' : 'block';
+  loading.style.display = state === 'loading' ? 'block' : 'none';
+  error.style.display   = state === 'error'   ? 'block' : 'none';
+  confirm.style.display = state === 'confirm' ? 'block' : 'none';
+}
+
+/**
+ * Show the error sub-panel with a custom message.
+ * @param {string} msg
+ */
+function screenshotSetError(msg) {
+  document.getElementById('screenshot-error-msg').textContent = msg;
+  screenshotSetState('error');
+}
+
+/**
+ * Populate and show the confirmation checklist.
+ * Every extracted name gets its own labelled checkbox row, pre-checked.
+ * @param {string[]} names
+ */
+function screenshotShowConfirm(names) {
+  const list  = document.getElementById('screenshot-player-list');
+  const label = document.getElementById('screenshot-found-label');
+  const selAllBtn = document.getElementById('btn-screenshot-select-all');
+
+  label.textContent = `We found ${names.length} player${names.length !== 1 ? 's' : ''} — does this look right?`;
+  selAllBtn.textContent = 'Deselect all'; // reset toggle label
+
+  list.innerHTML = '';
+  names.forEach((name, i) => {
+    const id = `sc-player-${i}`;
+
+    const row = document.createElement('label');
+    row.htmlFor = id;
+    row.style.cssText = [
+      'display:flex', 'align-items:center', 'gap:10px',
+      'padding:8px 14px', 'cursor:pointer', 'transition:background 0.15s',
+      'border-bottom:1px solid var(--border)',
+    ].join(';');
+    row.addEventListener('mouseenter', () => row.style.background = 'var(--bg-card-hover)');
+    row.addEventListener('mouseleave', () => row.style.background = '');
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.id = id;
+    cb.className = 'screenshot-player-check';
+    cb.dataset.name = name;
+    cb.checked = true;
+    // Minimal checkbox styling — browser native, readable in dark context
+    cb.style.cssText = 'width:15px;height:15px;cursor:pointer;accent-color:var(--accent-blue);flex-shrink:0';
+
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    nameSpan.style.cssText = 'font-size:0.875rem;font-weight:500;flex:1';
+
+    row.appendChild(cb);
+    row.appendChild(nameSpan);
+    list.appendChild(row);
+  });
+
+  // Last row has no bottom border
+  if (list.lastElementChild) {
+    list.lastElementChild.style.borderBottom = 'none';
+  }
+
+  screenshotSetState('confirm');
+}
+
 document.getElementById('btn-confirm-import-team').addEventListener('click', async () => {
   const text = document.getElementById('team-import-text').value.trim();
-  if (!text || !State.activeProfile) return;
+  if (!text || !State.activeProfile) {
+    if (!State.activeProfile) openLoginScreen();
+    return;
+  }
 
   // Parse: one full player name per line. Strip blank lines and duplicates.
   const names = [...new Set(
@@ -3070,7 +3764,8 @@ async function lookupJerseyNumbers(players) {
     console.warn('[FootyOverlay] Jersey lookup failed, using fallback map:', err.message);
     // Build results from hardcoded fallback so table still populates
     results = players.map(p => {
-      const entry = JERSEY_FALLBACK[p.name];
+      const entry = JERSEY_FALLBACK[p.name]
+                 ?? JERSEY_FALLBACK[formatPlayerName(p.name)];
       return entry
         ? { name: p.name, jersey: entry.jersey, team: entry.team }
         : { name: p.name, jersey: null, team: null };
@@ -3140,7 +3835,7 @@ function renderTeamTable(players) {
     <tr data-player-id="${escHtml(p.id)}">
       <td class="jersey-cell" style="color:var(--text-muted); min-width:40px">${jerseyCell(p)}</td>
       <td>
-        ${escHtml(p.name)}
+        ${escHtml(formatPlayerName(p.name))}
         ${p.team ? `<span style="color:var(--text-muted);font-size:0.75rem;margin-left:6px">${escHtml(p.team)}</span>` : ''}
       </td>
       <td class="player-score-cell${(p.weekScore || 0) > 100 ? ' high' : ''}">${p.weekScore || 0}</td>
@@ -3173,6 +3868,27 @@ function renderTeamTable(players) {
 /* ================================================================
    UTILITY
    ================================================================ */
+/**
+ * Format a player name to "I. Surname" display format.
+ * Handles multi-word first names ("Jason Horne-Francis" → "J. Horne-Francis"),
+ * hyphenated surnames, and single-word names gracefully.
+ * Idempotent — already-shortened names (e.g. "J. Horne-Francis") pass through.
+ *
+ * @param {string} fullName
+ * @returns {string}  e.g. "Patrick Dangerfield" → "P. Dangerfield"
+ */
+function formatPlayerName(fullName) {
+  if (!fullName) return '';
+  const trimmed = fullName.trim();
+  // Already in short form — first word is a single letter followed by a dot
+  if (/^[A-Z]\.\s/.test(trimmed)) return trimmed;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return trimmed; // single-word name — return as-is
+  const initial = parts[0][0].toUpperCase() + '.';
+  const surname = parts.slice(1).join(' ');
+  return `${initial} ${surname}`;
+}
+
 /** Safely escapes HTML to prevent XSS */
 function escHtml(str) {
   const d = document.createElement('div');
@@ -3184,7 +3900,7 @@ function escHtml(str) {
    INIT — Entry point
    ================================================================ */
 function init() {
-  // Check for mock mode URL param
+  // ── Mock mode ──────────────────────────────────────────────────────────────
   const params = new URLSearchParams(window.location.search);
   if (params.get('mock') === 'true') {
     State.isMockMode = true;
@@ -3192,43 +3908,37 @@ function init() {
     console.info('[FootyOverlay] Running in MOCK MODE — no live data will be fetched.');
   }
 
-  // Load profiles from localStorage
-  loadProfiles();
+  // Seed the watch tab with empty state immediately so layout is visible
+  renderWatchTab([], []);
 
-  // Attempt to restore last active profile
-  const lastId = lsGet('activeProfileId');
-  const lastProfile = State.profiles.find(p => p.id === lastId);
+  // ── Attempt to restore last session ────────────────────────────────────────
+  // "activeEmail" is set by activateUser() and cleared by signOut().
+  const lastEmail = lsGet('activeEmail');
 
-  if (lastProfile) {
-    setActiveProfile(lastProfile);
-    // Load team if any
-    if (lastProfile.team?.length) renderTeamTable(lastProfile.team);
-    startPolling();
-    showView('watch');
-    // Initial render with empty data while fetch runs
-    renderWatchTab([], []);
-  } else if (State.profiles.length === 0) {
-    // First ever load — show profile selector
-    openProfileSelector();
-    // We still start polling so the background data is ready
-    startPolling();
-    renderWatchTab([], []);
-  } else {
-    // Profiles exist but no lastId — show selector
-    openProfileSelector();
-    startPolling();
-    renderWatchTab([], []);
+  if (lastEmail && lastEmail !== 'null') {
+    const stored = userLsGet(lastEmail, 'profile');
+    if (stored) {
+      // Returning user with a saved profile — skip login screen entirely
+      activateUser(stored);
+      if (stored.team?.length) renderTeamTable(stored.team);
+      startPolling();
+      showView('watch');
+      console.info('[FootyOverlay] Restored session for', stored.email);
+      return;
+    }
   }
 
-  console.info('[FootyOverlay] Initialised.', {
-    mockMode: State.isMockMode,
-    profiles: State.profiles.length,
-    activeProfile: State.activeProfile?.name || 'none',
-  });
+  // ── No active session — show login screen ─────────────────────────────────
+  // Start polling in background so data is ready after login
+  startPolling();
+  openLoginScreen();
+
+  console.info('[FootyOverlay] Initialised — awaiting login.');
 }
 
 // Kick off
 init();
+
 </script>
 
 </body>
