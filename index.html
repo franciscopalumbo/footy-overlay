@@ -1,0 +1,3235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="FootyOverlay — Live AFL Fantasy & SuperCoach Scoring Overlay" />
+  <title>FootyOverlay</title>
+
+  <!-- Google Fonts: Bebas Neue (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       CSS CUSTOM PROPERTIES — Edit these to retheme the entire app
+       ============================================================ */
+    :root {
+      --bg-primary:    #0d1117;
+      --bg-secondary:  #161b22;
+      --bg-card:       rgba(255, 255, 255, 0.05);
+      --bg-card-hover: rgba(255, 255, 255, 0.08);
+      --accent-live:   #00ff88;
+      --accent-alert:  #ffb800;
+      --accent-blue:   #3b82f6;
+      --accent-red:    #ef4444;
+      --text-primary:  #f0f4f8;
+      --text-muted:    #8b95a1;
+      --border:        rgba(255, 255, 255, 0.08);
+      --border-hover:  rgba(255, 255, 255, 0.18);
+      --radius:        12px;
+      --radius-sm:     8px;
+      --shadow:        0 8px 32px rgba(0, 0, 0, 0.4);
+      --transition:    all 0.22s ease;
+
+      /* Typography scale */
+      --font-display: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+      --font-body:    'DM Sans', sans-serif;
+
+      /* Spacing */
+      --nav-height:   64px;
+      --nav-bottom:   72px; /* mobile bottom nav height */
+    }
+
+    /* ============================================================
+       Z-INDEX STACK (all layers documented here — edit in one place)
+       nav=100 | overlay-widget=200 | profile-selector=300 | modal-backdrop=400 | toasts=500
+       ============================================================ */
+
+    /* ============================================================
+       RESET & BASE
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.5;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Android TV / 10-foot UI: bump base font */
+    @media (min-width: 1920px) {
+      html { font-size: 20px; }
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; font-family: var(--font-body); }
+    input, select, textarea { font-family: var(--font-body); }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* ============================================================
+       FOCUS STYLES — Critical for Android TV D-pad navigation
+       ============================================================ */
+    :focus-visible {
+      outline: 3px solid var(--accent-live);
+      outline-offset: 3px;
+      border-radius: var(--radius-sm);
+    }
+
+    /* ============================================================
+       LAYOUT SHELL
+       ============================================================ */
+    #app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ---- Top Header (desktop) ---- */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: var(--nav-height);
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100; /* nav layer */
+    }
+
+    .header-logo {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-logo span.dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent-live);
+      box-shadow: 0 0 10px var(--accent-live);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 10px var(--accent-live); }
+      50%       { opacity: 0.6; box-shadow: 0 0 4px var(--accent-live); }
+    }
+
+    /* Desktop top nav tabs */
+    #top-nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .nav-tab:hover, .nav-tab:focus-visible {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border);
+    }
+    .nav-tab.active {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: transparent;
+    }
+    .nav-tab .nav-icon { font-size: 1rem; }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Mock-mode badge */
+    #mock-badge {
+      display: none;
+      padding: 4px 10px;
+      background: var(--accent-alert);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 20px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    body.mock-mode #mock-badge { display: flex; align-items: center; gap: 4px; }
+
+    /* Profile avatar button */
+    #profile-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: var(--bg-card);
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    #profile-btn:hover, #profile-btn:focus-visible {
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.25);
+    }
+
+    /* ---- Main content area ---- */
+    #main {
+      flex: 1;
+      padding: 24px;
+      padding-bottom: calc(var(--nav-bottom) + 24px);
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Mobile bottom nav */
+    #bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: var(--nav-bottom);
+      background: rgba(13, 17, 23, 0.96);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      z-index: 100; /* nav layer */
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    .bottom-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-weight: 500;
+      transition: var(--transition);
+    }
+    .bottom-tab .tab-icon { font-size: 1.4rem; }
+    .bottom-tab.active { color: var(--accent-live); }
+    .bottom-tab:focus-visible {
+      outline: 3px solid var(--accent-live);
+      outline-offset: 2px;
+    }
+
+    /* Show bottom nav on mobile/TV */
+    @media (max-width: 768px) {
+      #top-nav { display: none; }
+      #bottom-nav { display: flex; }
+      #main { padding: 16px; padding-bottom: calc(var(--nav-bottom) + 16px); }
+    }
+
+    /* ============================================================
+       VIEW MANAGEMENT — views swap in/out via .active class
+       ============================================================ */
+    .view {
+      display: none;
+      animation: view-in 0.25s ease both;
+    }
+    .view.active { display: block; }
+
+    @keyframes view-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============================================================
+       SECTION HEADINGS
+       ============================================================ */
+    .section-heading {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-heading .live-pill {
+      font-family: var(--font-body);
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 3px 8px;
+      background: var(--accent-live);
+      color: #000;
+      border-radius: 20px;
+      animation: blink-live 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink-live {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    /* ============================================================
+       GAME CARDS — Watch Tab
+       ============================================================ */
+    /* Horizontal scroll row for live games */
+    .games-scroll-row {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      scroll-snap-type: x mandatory;
+      margin-bottom: 32px;
+    }
+    .games-scroll-row::-webkit-scrollbar { height: 4px; }
+
+    /* Upcoming games grid */
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .game-card {
+      flex-shrink: 0;
+      width: 300px; /* for scroll row */
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+      overflow: hidden;
+      cursor: pointer;
+      transition: var(--transition);
+      backdrop-filter: blur(8px);
+      scroll-snap-align: start;
+      position: relative;
+    }
+    .game-card:hover, .game-card:focus-visible {
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+
+    /* Grid cards are full-width */
+    .games-grid .game-card { width: auto; }
+
+    /* Team colour stripe — left border, colour set via data attr + inline style */
+    .game-card-stripe {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+    }
+
+    .game-card-inner {
+      padding: 16px 16px 16px 22px;
+    }
+
+    .game-card-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-live);
+      border: 1px solid var(--accent-live);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .live-badge::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent-live);
+      animation: blink-live 1.5s ease-in-out infinite;
+    }
+
+    .upcoming-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .game-quarter {
+      font-size: 0.72rem;
+      color: var(--accent-alert);
+      font-weight: 600;
+    }
+
+    .game-teams {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .game-team-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .team-name {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      letter-spacing: 0.04em;
+      flex: 1;
+    }
+
+    .team-score {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      letter-spacing: 0.02em;
+      color: var(--text-primary);
+    }
+    .team-score.leader { color: var(--accent-live); }
+
+    .game-meta {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+    .game-meta span { display: flex; align-items: center; gap: 4px; }
+
+    /* Empty state */
+    .empty-state {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* ============================================================
+       GLASS CARD — reusable component
+       ============================================================ */
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+      padding: 24px;
+    }
+
+    /* ============================================================
+       BUTTONS
+       ============================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:focus-visible {
+      outline: 3px solid var(--accent-live);
+      outline-offset: 3px;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+    .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+
+    .btn-live {
+      background: transparent;
+      color: var(--accent-live);
+      border-color: var(--accent-live);
+    }
+    .btn-live:hover { background: rgba(0,255,136,0.08); }
+
+    .btn-ghost {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--accent-red);
+      border-color: var(--accent-red);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.08); }
+
+    .btn-lg {
+      padding: 14px 28px;
+      font-size: 1rem;
+      border-radius: var(--radius);
+    }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.8rem;
+    }
+
+    /* ============================================================
+       FORM ELEMENTS
+       ============================================================ */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="url"],
+    textarea,
+    select {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      transition: var(--transition);
+      width: 100%;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+    }
+    select option { background: #1c2432; color: var(--text-primary); }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      height: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(59,130,246,0.5);
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 0.9rem; font-weight: 500; }
+    .toggle-desc { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.1);
+      border-radius: 24px;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: var(--transition);
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent-blue); }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+      background: #fff;
+    }
+    .toggle input:focus-visible + .toggle-slider {
+      outline: 3px solid var(--accent-live);
+      outline-offset: 3px;
+    }
+
+    /* Radio group */
+    .radio-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .radio-option {
+      position: relative;
+    }
+    .radio-option input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .radio-option label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text-muted);
+      transition: var(--transition);
+    }
+    .radio-option input[type="radio"]:checked + label {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: rgba(59,130,246,0.1);
+    }
+    .radio-option input[type="radio"]:focus-visible + label {
+      outline: 3px solid var(--accent-live);
+      outline-offset: 3px;
+    }
+
+    /* ============================================================
+       MODAL
+       ============================================================ */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 400; /* modal-backdrop layer — must exceed profile-selector (300) */
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modal-in 0.25s ease both;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.95) translateY(-12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      letter-spacing: 0.05em;
+    }
+    .modal-close {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    .modal-close:hover { background: var(--bg-card); color: var(--text-primary); }
+
+    .modal-body { padding: 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ============================================================
+       PROFILE SELECTOR — Netflix style
+       ============================================================ */
+    #profile-selector {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.97);
+      backdrop-filter: blur(16px);
+      z-index: 300; /* profile-selector layer */
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+    #profile-selector.open { display: flex; }
+
+    .profile-selector-title {
+      font-family: var(--font-display);
+      font-size: 3rem;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+    .profile-selector-sub {
+      color: var(--text-muted);
+      margin-bottom: 48px;
+      text-align: center;
+    }
+
+    .profiles-grid {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+
+    .profile-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 24px;
+      border-radius: var(--radius);
+      border: 2px solid transparent;
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: var(--transition);
+      min-width: 120px;
+    }
+    .profile-card:hover, .profile-card:focus-visible {
+      border-color: var(--accent-blue);
+      background: rgba(59,130,246,0.08);
+      transform: scale(1.05);
+    }
+
+    .profile-avatar {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2.2rem;
+      border: 3px solid var(--border);
+      transition: var(--transition);
+    }
+    .profile-card:hover .profile-avatar { border-color: var(--accent-blue); }
+    .profile-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .add-profile-card {
+      opacity: 0.7;
+    }
+    .add-profile-card .profile-avatar {
+      background: var(--bg-card);
+      border-style: dashed;
+      font-size: 1.8rem;
+      color: var(--text-muted);
+    }
+    .add-profile-card:hover { opacity: 1; }
+
+    /* ============================================================
+       GAME DETAIL VIEW (View 2)
+       ============================================================ */
+    #view-game-detail .game-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .back-btn {
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1rem;
+      transition: var(--transition);
+    }
+    .back-btn:hover, .back-btn:focus-visible {
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+
+    .game-detail-title {
+      flex: 1;
+    }
+    .game-detail-matchup {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      letter-spacing: 0.05em;
+    }
+    .game-detail-live-score {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      color: var(--accent-live);
+      letter-spacing: 0.08em;
+    }
+
+    /* Action buttons row */
+    .game-detail-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    /* ============================================================
+       CUSTOMISE PLAYERS VIEW (View 3)
+       ============================================================ */
+    .custom-team-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .custom-team-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      transition: var(--transition);
+    }
+
+    .custom-team-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      cursor: pointer;
+      border-left: 5px solid var(--accent-blue);
+    }
+
+    .custom-team-header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .custom-team-name-display {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      letter-spacing: 0.05em;
+    }
+    .custom-team-count {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .custom-team-body {
+      padding: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .custom-team-card.collapsed .custom-team-body { display: none; }
+
+    .player-select-list {
+      max-height: 200px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      margin-top: 8px;
+    }
+
+    .player-select-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .player-select-item:last-child { border-bottom: none; }
+    .player-select-item:hover { background: var(--bg-card); }
+    .player-select-item.selected { background: rgba(59,130,246,0.1); }
+
+    .player-jersey { 
+      font-family: var(--font-display);
+      font-size: 1rem;
+      color: var(--text-muted);
+      min-width: 24px;
+      text-align: center;
+    }
+    .player-check {
+      margin-left: auto;
+      color: var(--accent-blue);
+      opacity: 0;
+    }
+    .player-select-item.selected .player-check { opacity: 1; }
+
+    /* ============================================================
+       OVERLAY VIEW (View 4) — Fixed, draggable, always-on-top
+       ============================================================ */
+    #overlay {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 200; /* overlay-widget layer */
+      display: none;
+      width: 300px;
+      cursor: grab;
+      user-select: none;
+    }
+    #overlay.active { display: block; }
+    #overlay.dragging { cursor: grabbing; }
+
+    .overlay-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(13,17,23,0.95);
+      border: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+      backdrop-filter: blur(12px);
+    }
+    .overlay-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-live);
+    }
+    .overlay-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .overlay-btn {
+      width: 24px; height: 24px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .overlay-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+
+    /* Opacity slider that shows on hover */
+    .overlay-opacity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      background: rgba(13,17,23,0.9);
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      opacity: 0;
+      transition: var(--transition);
+    }
+    #overlay:hover .overlay-opacity-row { opacity: 1; }
+    .overlay-opacity-row label {
+      font-size: 0.65rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .overlay-tables {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      overflow: hidden;
+      backdrop-filter: blur(12px);
+    }
+    #overlay.minimised .overlay-tables { display: none; }
+
+    .overlay-team-table {
+      background: rgba(13,17,23,0.92);
+    }
+    .overlay-team-table + .overlay-team-table {
+      border-top: 1px solid var(--border);
+    }
+
+    .overlay-team-name {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-left: 4px solid var(--accent-blue);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .overlay-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .overlay-table th {
+      padding: 4px 8px;
+      text-align: left;
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    .overlay-table th:last-child { text-align: right; }
+    .overlay-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.3s ease;
+    }
+    .overlay-table tr:last-child td { border-bottom: none; }
+    .overlay-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 0.95rem; }
+
+    /* Score flash animations */
+    @keyframes flash-increase {
+      0%, 100% { background: transparent; }
+      30%       { background: rgba(0,255,136,0.25); }
+    }
+    @keyframes flash-decrease {
+      0%, 100% { background: transparent; }
+      30%       { background: rgba(239,68,68,0.25); }
+    }
+    .score-flash-up   { animation: flash-increase 1s ease; }
+    .score-flash-down { animation: flash-decrease 1s ease; }
+
+    /* ============================================================
+       TOAST NOTIFICATIONS
+       ============================================================ */
+    #toast-container {
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      z-index: 500; /* toasts layer — always topmost */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(22,27,34,0.96);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent-live);
+      border-radius: var(--radius-sm);
+      backdrop-filter: blur(12px);
+      min-width: 240px;
+      max-width: 300px;
+      box-shadow: var(--shadow);
+      animation: toast-in 0.3s ease both, toast-out 0.3s ease 3.7s both;
+      pointer-events: auto;
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateX(0); }
+      to   { opacity: 0; transform: translateX(20px); }
+    }
+
+    .toast-icon { font-size: 1.2rem; margin-top: 1px; }
+    .toast-content { flex: 1; }
+    .toast-player { font-weight: 600; font-size: 0.85rem; }
+    .toast-action { font-size: 0.8rem; color: var(--text-muted); }
+    .toast-points {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--accent-live);
+      align-self: center;
+    }
+    .toast-points.negative { color: var(--accent-red); }
+
+    /* ============================================================
+       TEAM TAB (View: team)
+       ============================================================ */
+    .team-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .team-table th {
+      text-align: left;
+      padding: 10px 16px;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    .team-table th:last-child, .team-table td:last-child { text-align: right; }
+    .team-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.9rem;
+    }
+    .team-table tr:last-child td { border-bottom: none; }
+    .team-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .player-score-cell {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+    }
+    .player-score-cell.high { color: var(--accent-live); }
+    .player-total-row td {
+      font-weight: 700;
+      color: var(--accent-live);
+      border-top: 2px solid var(--border);
+    }
+
+    /* ============================================================
+       SETTINGS VIEW
+       ============================================================ */
+    .settings-section {
+      margin-bottom: 32px;
+    }
+    .settings-section-title {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .danger-zone {
+      border-color: rgba(239,68,68,0.3);
+      padding: 20px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(239,68,68,0.2);
+      background: rgba(239,68,68,0.04);
+    }
+    .danger-zone .settings-section-title { color: var(--accent-red); }
+
+    /* ============================================================
+       LOADING SPINNER
+       ============================================================ */
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-state {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* ============================================================
+       UTILITY
+       ============================================================ */
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-8 { gap: 8px; }
+    .gap-12 { gap: 12px; }
+    .gap-16 { gap: 16px; }
+    .mb-8 { margin-bottom: 8px; }
+    .mb-16 { margin-bottom: 16px; }
+    .mb-24 { margin-bottom: 24px; }
+    .text-muted { color: var(--text-muted); }
+    .text-sm { font-size: 0.85rem; }
+    .font-display { font-family: var(--font-display); }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    /* ============================================================
+       ANDROID TV — D-pad nav enhancements
+       ============================================================ */
+    @media (min-width: 1920px) {
+      .game-card { min-height: 200px; }
+      .game-card:focus-visible {
+        outline-width: 4px;
+        outline-offset: 4px;
+        box-shadow: 0 0 0 6px rgba(0,255,136,0.15);
+      }
+      .btn { padding: 14px 28px; font-size: 1.1rem; }
+      .team-name { font-size: 2rem; }
+      .team-score { font-size: 2.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================
+     MOCK MODE BANNER (shown when ?mock=true)
+     ================================================================ -->
+<div id="mock-badge">🔧 MOCK DATA</div>
+
+<!-- ================================================================
+     APP SHELL
+     ================================================================ -->
+<div id="app">
+
+  <!-- ---- TOP HEADER ---- -->
+  <header id="header" role="banner">
+    <div class="header-logo" aria-label="FootyOverlay">
+      <span class="dot" aria-hidden="true"></span>
+      FOOTY<span style="color:var(--accent-blue)">OVERLAY</span>
+    </div>
+
+    <!-- Desktop top navigation -->
+    <nav id="top-nav" aria-label="Main navigation">
+      <button class="nav-tab active" data-view="watch" tabindex="0">
+        <span class="nav-icon" aria-hidden="true">👁</span> Watch
+      </button>
+      <button class="nav-tab" data-view="team" tabindex="0">
+        <span class="nav-icon" aria-hidden="true">👤</span> Team
+      </button>
+      <button class="nav-tab" data-view="settings" tabindex="0">
+        <span class="nav-icon" aria-hidden="true">⚙️</span> Settings
+      </button>
+    </nav>
+
+    <div class="header-actions">
+      <!-- Overlay toggle button -->
+      <button class="btn btn-ghost btn-sm" id="overlay-toggle-btn" aria-label="Toggle overlay" style="display:none">
+        🪟 Overlay
+      </button>
+      <!-- Profile selector button -->
+      <button id="profile-btn" aria-label="Switch profile" tabindex="0">
+        <span id="profile-avatar-display">😊</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ---- MAIN CONTENT ---- -->
+  <main id="main" role="main">
+
+    <!-- ============================================================
+         VIEW: WATCH (tab 1 — default)
+         ============================================================ -->
+    <section id="view-watch" class="view active" aria-label="Watch live games">
+
+      <!-- LIVE NOW section -->
+      <div class="section-heading">
+        🏉 LIVE NOW
+        <span class="live-pill" id="live-count-badge" aria-live="polite">0 LIVE</span>
+      </div>
+
+      <div id="live-games-row" class="games-scroll-row" role="list" aria-label="Live games">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          Loading live games...
+        </div>
+      </div>
+
+      <!-- UPCOMING section -->
+      <div class="section-heading">📅 UPCOMING — <span id="upcoming-round-label" style="color:var(--text-muted)">Round ...</span></div>
+
+      <div id="upcoming-games-grid" class="games-grid" role="list" aria-label="Upcoming games">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          Loading fixtures...
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: GAME DETAIL (view 2 — opened by clicking a game card)
+         ============================================================ -->
+    <section id="view-game-detail" class="view" aria-label="Game detail">
+
+      <div class="game-detail-header">
+        <button class="back-btn" id="game-detail-back" aria-label="Go back to watch tab">
+          ← Back
+        </button>
+        <div class="game-detail-title">
+          <div class="game-detail-matchup" id="detail-matchup">Team A vs Team B</div>
+          <div class="game-detail-live-score" id="detail-live-score"></div>
+        </div>
+        <div id="detail-status-badge"></div>
+      </div>
+
+      <!-- Three action buttons -->
+      <div class="game-detail-actions">
+        <button class="btn btn-ghost btn-lg" id="btn-import-opponent" tabindex="0">
+          📋 Import Opponent's Team
+        </button>
+        <button class="btn btn-primary btn-lg" id="btn-customise-players" tabindex="0">
+          🎨 Customise Players
+        </button>
+        <button class="btn btn-live btn-lg" id="btn-begin-overlay" tabindex="0">
+          🪟 Begin Overlay
+        </button>
+      </div>
+
+      <!-- Game stats placeholder -->
+      <div class="glass-card">
+        <div class="section-heading" style="font-size:1.2rem; margin-bottom:16px">
+          📊 Game Stats
+        </div>
+        <div id="game-stats-content" class="text-muted text-sm">
+          Select a game to see detailed stats. Stats are populated from FanFooty live data.
+        </div>
+      </div>
+
+      <!-- Import opponent modal trigger / panel -->
+      <div id="import-opponent-panel" style="display:none; margin-top:24px;">
+        <div class="glass-card">
+          <div class="section-heading" style="font-size:1.1rem; margin-bottom:12px">Import Opponent's Team</div>
+          <div class="form-group">
+            <label for="opponent-team-input">Paste player names or IDs (one per line)</label>
+            <textarea id="opponent-team-input" rows="6"
+              placeholder="e.g.&#10;Patrick Dangerfield&#10;Marcus Bontempelli&#10;Clayton Oliver"></textarea>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-primary" id="btn-save-opponent">Save Opponent Team</button>
+            <button class="btn btn-ghost" id="btn-cancel-opponent">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: CUSTOMISE PLAYERS (view 3)
+         ============================================================ -->
+    <section id="view-customise" class="view" aria-label="Customise fantasy teams">
+
+      <div class="flex items-center justify-between mb-24">
+        <div>
+          <button class="back-btn" id="customise-back" aria-label="Return to game detail">← Back</button>
+        </div>
+        <h1 class="section-heading" style="margin-bottom:0">🎨 Customise Teams</h1>
+        <button class="btn btn-danger btn-sm" id="btn-scoreboard-mode" tabindex="0">
+          📋 Full Scoreboard Mode
+        </button>
+      </div>
+
+      <!-- Custom team cards container -->
+      <div id="custom-teams-container" class="custom-team-cards" role="list">
+        <!-- Injected by JS -->
+      </div>
+
+      <!-- Add team button (max 5) -->
+      <div style="margin-top:16px;">
+        <button class="btn btn-ghost" id="btn-add-team" tabindex="0">
+          + Add Team
+        </button>
+        <span id="team-count-label" class="text-muted text-sm" style="margin-left:12px">0 / 5 teams</span>
+      </div>
+
+      <div class="divider"></div>
+
+      <button class="btn btn-primary btn-lg" id="btn-save-customise" tabindex="0">
+        ✅ Save & Return to Game
+      </button>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: TEAM (tab 2)
+         ============================================================ -->
+    <section id="view-team" class="view" aria-label="Your fantasy team">
+
+      <div class="flex items-center justify-between mb-24">
+        <h1 class="section-heading" style="margin-bottom:0">👤 My Team</h1>
+        <button class="btn btn-ghost" id="btn-import-team" tabindex="0">
+          📥 Import Team
+        </button>
+      </div>
+
+      <div class="glass-card" style="margin-bottom:24px;">
+        <div id="my-team-table-wrap">
+          <div class="empty-state">
+            <div class="empty-icon">📋</div>
+            <p>No team imported yet. Click "Import Team" to paste your AFL Fantasy or SuperCoach lineup.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Import team panel -->
+      <div id="import-team-panel" style="display:none;">
+        <div class="glass-card">
+          <div class="section-heading" style="font-size:1.1rem; margin-bottom:12px">Import Team</div>
+          <div class="form-group">
+            <label for="team-import-url">Team URL (optional)</label>
+            <input type="url" id="team-import-url" placeholder="https://fantasy.afl.com.au/..." />
+          </div>
+          <div class="form-group">
+            <label for="team-import-text">Paste player names — one per line</label>
+            <textarea id="team-import-text" rows="8"
+              placeholder="e.g.&#10;Patrick Dangerfield&#10;Marcus Bontempelli&#10;Lachlan Neale&#10;Clayton Oliver&#10;Christian Petracca"></textarea>
+          </div>
+          <div class="flex gap-8">
+            <button class="btn btn-primary" id="btn-confirm-import-team">Import</button>
+            <button class="btn btn-ghost" id="btn-cancel-import-team">Cancel</button>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: SETTINGS (tab 3)
+         ============================================================ -->
+    <section id="view-settings" class="view" aria-label="Settings">
+
+      <h1 class="section-heading mb-24">⚙️ Settings</h1>
+
+      <!-- Scoring system -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Scoring System</div>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" name="scoring-system" id="scoring-afl" value="afl_fantasy" />
+            <label for="scoring-afl">🏆 AFL Fantasy</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" name="scoring-system" id="scoring-sc" value="supercoach" />
+            <label for="scoring-sc">⚽ SuperCoach</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overlay settings -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Overlay</div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Overlay Opacity</div>
+            <div class="toggle-desc">Adjust how transparent the overlay appears</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px; min-width:160px;">
+            <input type="range" id="setting-opacity" min="10" max="100" value="90"
+                   aria-label="Overlay opacity" style="width:120px" />
+            <span id="opacity-value" style="font-size:0.8rem; color:var(--text-muted); min-width:36px">90%</span>
+          </div>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Overlay Position</div>
+          </div>
+          <select id="setting-position" aria-label="Overlay position">
+            <option value="top-right">Top Right</option>
+            <option value="top-left">Top Left</option>
+            <option value="bottom-right">Bottom Right</option>
+            <option value="bottom-left">Bottom Left</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Notifications</div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Toaster Notifications</div>
+            <div class="toggle-desc">Pop-up alerts for scoring actions</div>
+          </div>
+          <label class="toggle" aria-label="Enable toaster notifications">
+            <input type="checkbox" id="setting-toasts" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Notification Sound</div>
+          </div>
+          <label class="toggle" aria-label="Enable notification sound">
+            <input type="checkbox" id="setting-sound" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row" id="sound-volume-row" style="display:none">
+          <div class="toggle-label">Volume</div>
+          <div style="display:flex;align-items:center;gap:8px;min-width:160px">
+            <input type="range" id="setting-volume" min="0" max="100" value="60"
+                   aria-label="Notification volume" style="width:120px" />
+            <span id="volume-value" style="font-size:0.8rem;color:var(--text-muted);min-width:36px">60%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data polling -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Data</div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Live Poll Interval</div>
+            <div class="toggle-desc">How often to refresh live game data</div>
+          </div>
+          <select id="setting-poll-interval" aria-label="Poll interval for live games">
+            <option value="15">Every 15 seconds</option>
+            <option value="30" selected>Every 30 seconds</option>
+            <option value="60">Every 60 seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Danger zone -->
+      <div class="settings-section danger-zone">
+        <div class="settings-section-title">Danger Zone</div>
+        <p class="text-sm text-muted mb-16">This will delete all profiles, teams, and settings. This cannot be undone.</p>
+        <button class="btn btn-danger" id="btn-clear-data" tabindex="0">
+          🗑 Clear All Data
+        </button>
+      </div>
+
+    </section>
+
+  </main><!-- /#main -->
+
+  <!-- ---- MOBILE BOTTOM NAV ---- -->
+  <nav id="bottom-nav" aria-label="Mobile navigation">
+    <button class="bottom-tab active" data-view="watch" tabindex="0">
+      <span class="tab-icon" aria-hidden="true">👁</span>
+      <span>Watch</span>
+    </button>
+    <button class="bottom-tab" data-view="team" tabindex="0">
+      <span class="tab-icon" aria-hidden="true">👤</span>
+      <span>Team</span>
+    </button>
+    <button class="bottom-tab" data-view="settings" tabindex="0">
+      <span class="tab-icon" aria-hidden="true">⚙️</span>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+</div><!-- /#app -->
+
+<!-- ================================================================
+     OVERLAY — Lives outside view stack, always rendered
+     ================================================================ -->
+<div id="overlay" role="region" aria-label="Live fantasy scores overlay">
+
+  <div class="overlay-header" id="overlay-drag-handle">
+    <span class="overlay-title">🪟 LIVE SCORES</span>
+    <div class="overlay-controls">
+      <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
+      <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
+    </div>
+  </div>
+
+  <!-- Opacity control (shows on hover) -->
+  <div class="overlay-opacity-row" aria-hidden="true">
+    <label>Opacity</label>
+    <input type="range" id="overlay-opacity-slider" min="10" max="100" value="90"
+           style="flex:1; width:auto;" aria-label="Overlay opacity" />
+  </div>
+
+  <!-- Score tables (injected by JS) -->
+  <div class="overlay-tables" id="overlay-tables-wrap">
+    <!-- Injected by renderOverlayTables() -->
+  </div>
+
+</div>
+
+<!-- ================================================================
+     TOAST CONTAINER
+     ================================================================ -->
+<div id="toast-container" aria-live="polite" aria-atomic="false" role="log"></div>
+
+<!-- ================================================================
+     PROFILE SELECTOR (Netflix style)
+     ================================================================ -->
+<div id="profile-selector" role="dialog" aria-modal="true" aria-label="Select profile">
+  <div class="profile-selector-title">Who's watching?</div>
+  <p class="profile-selector-sub">Select a profile to load your personalised fantasy data</p>
+
+  <div class="profiles-grid" id="profiles-grid" role="list">
+    <!-- Injected by JS -->
+  </div>
+
+  <button class="btn btn-ghost" id="manage-profiles-btn">Manage Profiles</button>
+</div>
+
+<!-- ================================================================
+     MODALS
+     ================================================================ -->
+
+<!-- Add / Edit Profile modal -->
+<div class="modal-backdrop" id="modal-add-profile" role="dialog" aria-modal="true" aria-labelledby="modal-add-profile-title">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-add-profile-title">Create Profile</span>
+      <button class="modal-close" data-modal="modal-add-profile" aria-label="Close modal">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="new-profile-name">Profile Name</label>
+        <input type="text" id="new-profile-name" placeholder="e.g. Lachlan" maxlength="20" />
+      </div>
+      <div class="form-group">
+        <label>Choose Avatar</label>
+        <div id="avatar-picker" class="flex gap-8" style="flex-wrap:wrap;">
+          <!-- Injected by JS -->
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modal-add-profile">Cancel</button>
+      <button class="btn btn-primary" id="btn-create-profile">Create Profile</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm / Alert modal -->
+<div class="modal-backdrop" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-confirm-title">Confirm</span>
+      <button class="modal-close" data-modal="modal-confirm" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-confirm-message">Are you sure?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modal-confirm">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ================================================================
+     JAVASCRIPT
+     ================================================================ -->
+<script>
+'use strict';
+
+/* ================================================================
+   CONSTANTS — SCORING SYSTEMS
+   Edit these values if AFL Fantasy / SuperCoach update their rules
+   ================================================================ */
+
+/** @type {Object} AFL Fantasy point values per action */
+const AFL_FANTASY_POINTS = {
+  goal:         6,
+  behind:       1,
+  mark:         3,
+  handball:     2,
+  kick:         3,
+  tackle:       4,
+  hb_clanger:  -3,
+  kick_clanger:-3,
+  free_for:     1,
+  free_against:-3,
+};
+
+/** @type {Object} SuperCoach point values per action */
+const SUPERCOACH_POINTS = {
+  goal:         8,
+  behind:       0.4,
+  mark:         4,
+  handball:     1,
+  kick:         3,
+  tackle:       4,
+  hb_clanger:  -4,
+  kick_clanger:-4,
+  free_for:     1,
+  free_against:-3,
+};
+
+/** @type {string[]} Emoji options for profile avatars */
+const AVATAR_OPTIONS = ['😊','🏉','🦘','🦁','🐯','🦊','🐻','🐼','🦅','⭐','🔥','💪','🏆','🎯','🤙'];
+
+/**
+ * JERSEY_FALLBACK — Hardcoded jersey numbers for the most common AFL fantasy players.
+ *
+ * ⚠️  NEEDS ANNUAL UPDATE: Jersey numbers change when players switch clubs or
+ *     new squad lists are issued pre-season. Review and update this map each year
+ *     before Round 1. Source: each club's official squad list on afl.com.au.
+ *
+ * This is only consulted when the jersey-lookup Netlify function is unavailable.
+ * The live function scrapes current squad data and takes precedence.
+ *
+ * Format: 'Full Player Name': { jersey: N, team: 'Club Name' }
+ */
+const JERSEY_FALLBACK = {
+  // ── Geelong ──────────────────────────────────────────────
+  'Patrick Dangerfield':    { jersey: 35, team: 'Geelong' },
+  'Tom Hawkins':            { jersey: 26, team: 'Geelong' },
+  'Jeremy Cameron':         { jersey: 5,  team: 'Geelong' },
+  'Mark Blicavs':           { jersey: 22, team: 'Geelong' },
+  'Isaac Smith':            { jersey: 8,  team: 'Geelong' },
+  'Mitch Duncan':           { jersey: 22, team: 'Geelong' },
+  'Tyson Stengle':          { jersey: 2,  team: 'Geelong' },
+  // ── Western Bulldogs ─────────────────────────────────────
+  'Marcus Bontempelli':     { jersey: 4,  team: 'Western Bulldogs' },
+  'Adam Treloar':           { jersey: 8,  team: 'Western Bulldogs' },
+  'Bailey Smith':           { jersey: 9,  team: 'Western Bulldogs' },
+  'Tom Liberatore':         { jersey: 7,  team: 'Western Bulldogs' },
+  'Cody Weightman':         { jersey: 27, team: 'Western Bulldogs' },
+  // ── Brisbane Lions ───────────────────────────────────────
+  'Lachlan Neale':          { jersey: 6,  team: 'Brisbane Lions' },
+  'Zac Bailey':             { jersey: 2,  team: 'Brisbane Lions' },
+  'Joe Daniher':            { jersey: 5,  team: 'Brisbane Lions' },
+  'Charlie Cameron':        { jersey: 7,  team: 'Brisbane Lions' },
+  'Dayne Zorko':            { jersey: 9,  team: 'Brisbane Lions' },
+  'Lincoln McCarthy':       { jersey: 3,  team: 'Brisbane Lions' },
+  // ── Melbourne ────────────────────────────────────────────
+  'Clayton Oliver':         { jersey: 13, team: 'Melbourne' },
+  'Christian Petracca':     { jersey: 5,  team: 'Melbourne' },
+  'Max Gawn':               { jersey: 11, team: 'Melbourne' },
+  'Jack Viney':             { jersey: 7,  team: 'Melbourne' },
+  'Bayley Fritsch':         { jersey: 12, team: 'Melbourne' },
+  'Steven May':             { jersey: 44, team: 'Melbourne' },
+  'Jake Melksham':          { jersey: 18, team: 'Melbourne' },
+  // ── Collingwood ──────────────────────────────────────────
+  'Nick Daicos':            { jersey: 35, team: 'Collingwood' },
+  'Scott Pendlebury':       { jersey: 10, team: 'Collingwood' },
+  'Jordan De Goey':         { jersey: 5,  team: 'Collingwood' },
+  'Darcy Moore':            { jersey: 2,  team: 'Collingwood' },
+  'Brayden Maynard':        { jersey: 21, team: 'Collingwood' },
+  'Mason Cox':              { jersey: 49, team: 'Collingwood' },
+  // ── Richmond ─────────────────────────────────────────────
+  'Dustin Martin':          { jersey: 4,  team: 'Richmond' },
+  'Shai Bolton':            { jersey: 12, team: 'Richmond' },
+  'Jack Riewoldt':          { jersey: 8,  team: 'Richmond' },
+  'Trent Cotchin':          { jersey: 9,  team: 'Richmond' },
+  'Nick Vlastuin':          { jersey: 22, team: 'Richmond' },
+  'Tom Lynch':              { jersey: 4,  team: 'Richmond' },
+  // ── Carlton ──────────────────────────────────────────────
+  'Patrick Cripps':         { jersey: 9,  team: 'Carlton' },
+  'Harry McKay':            { jersey: 1,  team: 'Carlton' },
+  'Sam Walsh':              { jersey: 8,  team: 'Carlton' },
+  'David Cuningham':        { jersey: 25, team: 'Carlton' },
+  'Zac Williams':           { jersey: 22, team: 'Carlton' },
+  // ── Hawthorn ─────────────────────────────────────────────
+  'James Sicily':           { jersey: 8,  team: 'Hawthorn' },
+  'Jai Newcombe':           { jersey: 12, team: 'Hawthorn' },
+  'Dylan Moore':            { jersey: 15, team: 'Hawthorn' },
+  'Mitch Lewis':            { jersey: 26, team: 'Hawthorn' },
+  'Finn Maginness':         { jersey: 33, team: 'Hawthorn' },
+  // ── Essendon ─────────────────────────────────────────────
+  'Darcy Parish':           { jersey: 7,  team: 'Essendon' },
+  'Jordan Ridley':          { jersey: 11, team: 'Essendon' },
+  'Jake Stringer':          { jersey: 4,  team: 'Essendon' },
+  'Kyle Langford':          { jersey: 12, team: 'Essendon' },
+  'Peter Wright':           { jersey: 20, team: 'Essendon' },
+  // ── Sydney Swans ─────────────────────────────────────────
+  'Callum Mills':           { jersey: 14, team: 'Sydney' },
+  'Chad Warner':            { jersey: 31, team: 'Sydney' },
+  'Lance Franklin':         { jersey: 23, team: 'Sydney' },
+  'Tom Papley':             { jersey: 11, team: 'Sydney' },
+  'Isaac Heeney':           { jersey: 5,  team: 'Sydney' },
+  'Errol Gulden':           { jersey: 10, team: 'Sydney' },
+  // ── GWS Giants ───────────────────────────────────────────
+  'Toby Greene':            { jersey: 4,  team: 'GWS Giants' },
+  'Lachie Whitfield':       { jersey: 6,  team: 'GWS Giants' },
+  'Jesse Hogan':            { jersey: 17, team: 'GWS Giants' },
+  'Jacob Hopper':           { jersey: 3,  team: 'GWS Giants' },
+  // ── Adelaide Crows ───────────────────────────────────────
+  'Rory Laird':             { jersey: 22, team: 'Adelaide' },
+  'Taylor Walker':          { jersey: 13, team: 'Adelaide' },
+  'Ben Keays':              { jersey: 28, team: 'Adelaide' },
+  'Jordan Dawson':          { jersey: 3,  team: 'Adelaide' },
+  'Izak Rankine':           { jersey: 2,  team: 'Adelaide' },
+  // ── Port Adelaide ────────────────────────────────────────
+  'Travis Boak':            { jersey: 5,  team: 'Port Adelaide' },
+  'Connor Rozee':           { jersey: 9,  team: 'Port Adelaide' },
+  'Zak Butters':            { jersey: 6,  team: 'Port Adelaide' },
+  'Ollie Wines':            { jersey: 23, team: 'Port Adelaide' },
+  'Charlie Dixon':          { jersey: 17, team: 'Port Adelaide' },
+  // ── Fremantle ────────────────────────────────────────────
+  'Nat Fyfe':               { jersey: 6,  team: 'Fremantle' },
+  'Andrew Brayshaw':        { jersey: 15, team: 'Fremantle' },
+  'Caleb Serong':           { jersey: 28, team: 'Fremantle' },
+  'Michael Walters':        { jersey: 9,  team: 'Fremantle' },
+  'Josh Treacy':            { jersey: 5,  team: 'Fremantle' },
+  // ── West Coast Eagles ────────────────────────────────────
+  'Tim Kelly':              { jersey: 4,  team: 'West Coast' },
+  'Elliot Yeo':             { jersey: 15, team: 'West Coast' },
+  'Jamie Cripps':           { jersey: 9,  team: 'West Coast' },
+  'Oscar Allen':            { jersey: 17, team: 'West Coast' },
+  // ── North Melbourne ──────────────────────────────────────
+  'Jason Horne-Francis':    { jersey: 1,  team: 'North Melbourne' },
+  'Luke Davies-Uniacke':    { jersey: 6,  team: 'North Melbourne' },
+  'Jy Simpkin':             { jersey: 5,  team: 'North Melbourne' },
+  'Nick Larkey':            { jersey: 9,  team: 'North Melbourne' },
+  // ── Gold Coast Suns ──────────────────────────────────────
+  'Touk Miller':            { jersey: 4,  team: 'Gold Coast' },
+  'Noah Anderson':          { jersey: 6,  team: 'Gold Coast' },
+  'Matt Rowell':            { jersey: 18, team: 'Gold Coast' },
+  'Ben King':               { jersey: 7,  team: 'Gold Coast' },
+  // ── St Kilda ─────────────────────────────────────────────
+  'Jack Steele':            { jersey: 4,  team: 'St Kilda' },
+  'Max King':               { jersey: 7,  team: 'St Kilda' },
+  'Jade Gresham':           { jersey: 6,  team: 'St Kilda' },
+  'Hunter Clark':           { jersey: 12, team: 'St Kilda' },
+};
+
+/* ================================================================
+   MOCK DATA
+   Used when ?mock=true is in the URL, or when fetch fails in dev.
+   All UI components should be demonstrable using this data alone.
+   ================================================================ */
+const MOCK_DATA = {
+  round: 14,
+  liveGames: [
+    {
+      id: 'g001',
+      teamA: { name: 'Richmond', abbr: 'RICH', color: '#ffd700', score: 72, goals: 10, behinds: 12 },
+      teamB: { name: 'Collingwood', abbr: 'COLL', color: '#000000', score: 61, goals: 8, behinds: 13 },
+      quarter: 3,
+      timeRemaining: '8:42',
+      venue: 'MCG',
+      status: 'live',
+      players: [
+        { id: 'p01', jersey: 4,  name: 'Dustin Martin',       pos: 'MID', score: 88  },
+        { id: 'p02', jersey: 12, name: 'Shai Bolton',          pos: 'FWD', score: 54  },
+        { id: 'p03', jersey: 8,  name: 'Jack Riewoldt',        pos: 'FWD', score: 62  },
+        { id: 'p04', jersey: 7,  name: 'Trent Cotchin',        pos: 'MID', score: 71  },
+        { id: 'p05', jersey: 22, name: 'Nick Vlastuin',        pos: 'DEF', score: 49  },
+        { id: 'p06', jersey: 14, name: 'Scott Pendlebury',     pos: 'MID', score: 102 },
+        { id: 'p07', jersey: 10, name: 'Darcy Moore',          pos: 'DEF', score: 58  },
+        { id: 'p08', jersey: 5,  name: 'Jordan De Goey',       pos: 'FWD', score: 76  },
+        { id: 'p09', jersey: 20, name: 'Brayden Maynard',      pos: 'DEF', score: 44  },
+        { id: 'p10', jersey: 33, name: 'Nick Daicos',          pos: 'MID', score: 118 },
+      ]
+    },
+    {
+      id: 'g002',
+      teamA: { name: 'Carlton', abbr: 'CARL', color: '#003087', score: 45, goals: 6, behinds: 9 },
+      teamB: { name: 'Hawthorn', abbr: 'HAW', color: '#4d2004', score: 55, goals: 7, behinds: 14 },
+      quarter: 2,
+      timeRemaining: '14:21',
+      venue: 'Marvel Stadium',
+      status: 'live',
+      players: [
+        { id: 'p11', jersey: 5,  name: 'Patrick Cripps',       pos: 'MID', score: 95  },
+        { id: 'p12', jersey: 3,  name: 'Harry McKay',          pos: 'FWD', score: 41  },
+        { id: 'p13', jersey: 9,  name: 'Sam Walsh',            pos: 'MID', score: 67  },
+        { id: 'p14', jersey: 8,  name: 'James Sicily',         pos: 'DEF', score: 74  },
+        { id: 'p15', jersey: 12, name: 'Jai Newcombe',         pos: 'MID', score: 83  },
+        { id: 'p16', jersey: 15, name: 'Dylan Moore',          pos: 'FWD', score: 52  },
+      ]
+    },
+  ],
+  upcomingGames: [
+    {
+      id: 'g003',
+      teamA: { name: 'Geelong', abbr: 'GEE', color: '#002b5c', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Brisbane', abbr: 'BRL', color: '#a30046', score: 0, goals: 0, behinds: 0 },
+      date: 'Sat 22 Jun', time: '7:25 PM AEST', venue: 'GMHBA Stadium', status: 'upcoming', players: []
+    },
+    {
+      id: 'g004',
+      teamA: { name: 'Essendon', abbr: 'ESS', color: '#cc2200', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'GWS Giants', abbr: 'GWS', color: '#f47920', score: 0, goals: 0, behinds: 0 },
+      date: 'Sun 23 Jun', time: '12:35 PM AEST', venue: 'Marvel Stadium', status: 'upcoming', players: []
+    },
+    {
+      id: 'g005',
+      teamA: { name: 'Port Adelaide', abbr: 'PORT', color: '#009fd9', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Sydney', abbr: 'SYD', color: '#ed0f05', score: 0, goals: 0, behinds: 0 },
+      date: 'Sun 23 Jun', time: '3:20 PM AEST', venue: 'Adelaide Oval', status: 'upcoming', players: []
+    },
+    {
+      id: 'g006',
+      teamA: { name: 'West Coast', abbr: 'WCE', color: '#003087', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Fremantle', abbr: 'FRE', color: '#2a0845', score: 0, goals: 0, behinds: 0 },
+      date: 'Sat 22 Jun', time: '4:40 PM AWST', venue: 'Optus Stadium', status: 'upcoming', players: []
+    },
+  ]
+};
+
+/* ================================================================
+   APP STATE
+   Central in-memory state store. Persisted to localStorage per profile.
+   ================================================================ */
+const State = {
+  isMockMode: false,
+  activeView: 'watch',
+  activeProfile: null,     // { id, name, avatar, settings, team, customTeams, opponentTeam }
+  profiles: [],
+  currentGame: null,       // Game object from MOCK_DATA or live fetch
+  liveGames: [],
+  upcomingGames: [],
+  customTeams: [],         // Array of { id, name, color, playerIds: [] }
+  scoreboardMode: false,   // If true: show all players, no toasts
+  overlayVisible: false,
+  overlayMinimised: false,
+  overlayPosition: { x: null, y: null }, // null = use CSS default
+  prevScores: {},          // { [playerId]: score } — used to detect changes for flashing
+  pollingTimers: {},       // Named timers for polling
+  confirmCallback: null,   // Callback for the confirm modal
+};
+
+/* ================================================================
+   LOCAL STORAGE HELPERS
+   All data persisted under "footyoverlay_v1" prefix
+   ================================================================ */
+const LS_KEY = 'footyoverlay_v1';
+
+function lsGet(key) {
+  try { return JSON.parse(localStorage.getItem(`${LS_KEY}_${key}`)); }
+  catch { return null; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(`${LS_KEY}_${key}`, JSON.stringify(val)); }
+  catch (e) { console.warn('LocalStorage write failed:', e); }
+}
+function lsClear() {
+  Object.keys(localStorage).filter(k => k.startsWith(LS_KEY))
+                            .forEach(k => localStorage.removeItem(k));
+}
+
+/* ================================================================
+   PROFILE STORE
+   Each profile is keyed by a UUID stored in the profiles list.
+   ================================================================ */
+function loadProfiles() {
+  State.profiles = lsGet('profiles') || [];
+}
+
+function saveProfiles() {
+  lsSet('profiles', State.profiles);
+}
+
+function createProfile(name, avatar) {
+  const id = `profile_${Date.now()}`;
+  const profile = {
+    id, name, avatar,
+    settings: {
+      scoringSystem: 'afl_fantasy',
+      overlayOpacity: 90,
+      overlayPosition: 'top-right',
+      toastsEnabled: true,
+      soundEnabled: false,
+      soundVolume: 60,
+      pollInterval: 30,
+    },
+    team: [],
+    customTeams: [],
+    opponentTeam: [],
+  };
+  State.profiles.push(profile);
+  saveProfiles();
+  return profile;
+}
+
+function setActiveProfile(profile) {
+  State.activeProfile = profile;
+  lsSet('activeProfileId', profile.id);
+  applyProfileSettings(profile);
+}
+
+function applyProfileSettings(profile) {
+  const s = profile.settings;
+  // Scoring system
+  document.querySelectorAll('[name="scoring-system"]').forEach(r => {
+    r.checked = (r.value === s.scoringSystem);
+  });
+  // Overlay opacity
+  const opEl = document.getElementById('setting-opacity');
+  if (opEl) { opEl.value = s.overlayOpacity; updateOpacityDisplay(s.overlayOpacity); }
+  const overlayOpSlider = document.getElementById('overlay-opacity-slider');
+  if (overlayOpSlider) overlayOpSlider.value = s.overlayOpacity;
+  setOverlayOpacity(s.overlayOpacity);
+  // Overlay position
+  const posEl = document.getElementById('setting-position');
+  if (posEl) posEl.value = s.overlayPosition;
+  // Toggles
+  setToggle('setting-toasts', s.toastsEnabled);
+  setToggle('setting-sound', s.soundEnabled);
+  const volRow = document.getElementById('sound-volume-row');
+  if (volRow) volRow.style.display = s.soundEnabled ? 'flex' : 'none';
+  const volEl = document.getElementById('setting-volume');
+  if (volEl) { volEl.value = s.soundVolume; updateVolumeDisplay(s.soundVolume); }
+  // Poll interval
+  const pollEl = document.getElementById('setting-poll-interval');
+  if (pollEl) pollEl.value = s.pollInterval;
+  // Profile avatar in header
+  document.getElementById('profile-avatar-display').textContent = profile.avatar;
+  // Custom teams
+  State.customTeams = [...(profile.customTeams || [])];
+}
+
+function saveCurrentProfile() {
+  if (!State.activeProfile) return;
+  const idx = State.profiles.findIndex(p => p.id === State.activeProfile.id);
+  if (idx !== -1) {
+    State.profiles[idx] = State.activeProfile;
+    saveProfiles();
+  }
+}
+
+function setToggle(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.checked = !!val;
+}
+
+/* ================================================================
+   VIEW MANAGEMENT
+   SPA navigation — swaps .active class on <section> elements.
+   ================================================================ */
+const VIEW_IDS = {
+  watch:       'view-watch',
+  team:        'view-team',
+  settings:    'view-settings',
+  'game-detail':  'view-game-detail',
+  'customise': 'view-customise',
+};
+
+function showView(viewName) {
+  // Hide all views
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  // Show target
+  const el = document.getElementById(VIEW_IDS[viewName] || VIEW_IDS['watch']);
+  if (el) el.classList.add('active');
+  State.activeView = viewName;
+  // Update nav tab states
+  document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === viewName);
+  });
+  // Show/hide overlay toggle button
+  const overlayToggleBtn = document.getElementById('overlay-toggle-btn');
+  if (overlayToggleBtn) overlayToggleBtn.style.display = viewName === 'game-detail' ? 'flex' : 'none';
+}
+
+/* ================================================================
+   PROFILE SELECTOR UI
+   ================================================================ */
+function openProfileSelector() {
+  renderProfilesGrid();
+  document.getElementById('profile-selector').classList.add('open');
+}
+
+function closeProfileSelector() {
+  document.getElementById('profile-selector').classList.remove('open');
+}
+
+function renderProfilesGrid() {
+  const grid = document.getElementById('profiles-grid');
+  grid.innerHTML = '';
+  State.profiles.forEach(profile => {
+    const card = document.createElement('button');
+    card.className = 'profile-card';
+    card.setAttribute('role', 'listitem');
+    card.tabIndex = 0;
+    card.setAttribute('aria-label', `Select profile: ${profile.name}`);
+    card.innerHTML = `
+      <div class="profile-avatar" style="background:rgba(59,130,246,0.1)">
+        ${profile.avatar}
+      </div>
+      <span class="profile-name">${escHtml(profile.name)}</span>
+    `;
+    card.addEventListener('click', () => {
+      setActiveProfile(profile);
+      closeProfileSelector();
+    });
+    grid.appendChild(card);
+  });
+
+  // Add profile card
+  const addCard = document.createElement('button');
+  addCard.className = 'profile-card add-profile-card';
+  addCard.tabIndex = 0;
+  addCard.setAttribute('aria-label', 'Add new profile');
+  addCard.innerHTML = `
+    <div class="profile-avatar">+</div>
+    <span class="profile-name">Add Profile</span>
+  `;
+  addCard.addEventListener('click', openAddProfileModal);
+  grid.appendChild(addCard);
+}
+
+/* ================================================================
+   ADD PROFILE MODAL
+   ================================================================ */
+function openAddProfileModal() {
+  // Populate avatar picker
+  const picker = document.getElementById('avatar-picker');
+  picker.innerHTML = '';
+  AVATAR_OPTIONS.forEach((emoji, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'overlay-btn';
+    btn.style.cssText = 'width:40px;height:40px;font-size:1.4rem;border-radius:8px;';
+    btn.textContent = emoji;
+    btn.setAttribute('aria-label', `Choose avatar: ${emoji}`);
+    btn.addEventListener('click', () => {
+      picker.querySelectorAll('button').forEach(b => b.style.borderColor = '');
+      btn.style.borderColor = 'var(--accent-blue)';
+      picker.dataset.selected = emoji;
+    });
+    // Default select first
+    if (i === 0) {
+      btn.style.borderColor = 'var(--accent-blue)';
+      picker.dataset.selected = emoji;
+    }
+    picker.appendChild(btn);
+  });
+
+  document.getElementById('new-profile-name').value = '';
+  openModal('modal-add-profile');
+}
+
+document.getElementById('btn-create-profile').addEventListener('click', () => {
+  const name = document.getElementById('new-profile-name').value.trim();
+  if (!name) { alert('Please enter a profile name.'); return; }
+  const avatar = document.getElementById('avatar-picker').dataset.selected || '😊';
+  const profile = createProfile(name, avatar);
+  closeModal('modal-add-profile');
+  setActiveProfile(profile);
+  closeProfileSelector();
+});
+
+/* ================================================================
+   MODAL HELPERS
+   ================================================================ */
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Wire up all modal close triggers
+document.querySelectorAll('[data-modal]').forEach(btn => {
+  btn.addEventListener('click', () => closeModal(btn.dataset.modal));
+});
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', e => {
+    if (e.target === bd) {
+      bd.classList.remove('open');
+    }
+  });
+});
+
+// Escape key closes modals
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+/* Confirm modal */
+function showConfirm(message, onConfirm) {
+  document.getElementById('modal-confirm-message').textContent = message;
+  State.confirmCallback = onConfirm;
+  openModal('modal-confirm');
+}
+document.getElementById('modal-confirm-ok').addEventListener('click', () => {
+  closeModal('modal-confirm');
+  if (State.confirmCallback) State.confirmCallback();
+  State.confirmCallback = null;
+});
+
+/* ================================================================
+   NAVIGATION WIRING
+   ================================================================ */
+document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const view = btn.dataset.view;
+    if (view) showView(view);
+  });
+});
+
+document.getElementById('profile-btn').addEventListener('click', openProfileSelector);
+
+/* ================================================================
+   GAME CARD RENDERING
+   ================================================================ */
+function renderGameCard(game) {
+  const isLive = game.status === 'live';
+  const card = document.createElement('article');
+  card.className = 'game-card';
+  card.tabIndex = 0;
+  card.setAttribute('role', 'listitem');
+  card.setAttribute('aria-label', `${game.teamA.name} vs ${game.teamB.name}${isLive ? ' - Live' : ''}`);
+
+  const scoreA = isLive ? game.teamA.score : '';
+  const scoreB = isLive ? game.teamB.score : '';
+  const leaderA = isLive && game.teamA.score >= game.teamB.score ? 'leader' : '';
+  const leaderB = isLive && game.teamB.score > game.teamA.score  ? 'leader' : '';
+
+  const statusHtml = isLive
+    ? `<span class="live-badge">LIVE</span>
+       <span class="game-quarter">Q${game.quarter} · ${game.timeRemaining}</span>`
+    : `<span class="upcoming-badge">${game.date}</span>`;
+
+  card.innerHTML = `
+    <div class="game-card-stripe" style="background:${game.teamA.color}"></div>
+    <div class="game-card-inner">
+      <div class="game-card-status">${statusHtml}</div>
+      <div class="game-teams">
+        <div class="game-team-row">
+          <span class="team-name">${escHtml(game.teamA.name)}</span>
+          ${isLive ? `<span class="team-score ${leaderA}">${scoreA}</span>` : ''}
+        </div>
+        <div class="game-team-row">
+          <span class="team-name" style="color:var(--text-muted)">${escHtml(game.teamB.name)}</span>
+          ${isLive ? `<span class="team-score ${leaderB}">${scoreB}</span>` : ''}
+        </div>
+      </div>
+      <div class="game-meta">
+        <span>🏟 ${escHtml(game.venue)}</span>
+        ${!isLive ? `<span>🕐 ${escHtml(game.time)}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Click / Enter → open game detail
+  const openDetail = () => openGameDetail(game);
+  card.addEventListener('click', openDetail);
+  card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openDetail(); });
+
+  return card;
+}
+
+function renderWatchTab(liveGames, upcomingGames) {
+  const liveRow = document.getElementById('live-games-row');
+  const upcomingGrid = document.getElementById('upcoming-games-grid');
+  const liveCountBadge = document.getElementById('live-count-badge');
+
+  // Live games
+  liveRow.innerHTML = '';
+  if (liveGames.length === 0) {
+    liveRow.innerHTML = `<div class="empty-state"><div class="empty-icon">📺</div>
+      <p>No live games right now. Check back during AFL game times.</p></div>`;
+  } else {
+    liveGames.forEach(g => liveRow.appendChild(renderGameCard(g)));
+  }
+  liveCountBadge.textContent = `${liveGames.length} LIVE`;
+
+  // Upcoming games
+  upcomingGrid.innerHTML = '';
+  const round = (State.isMockMode ? MOCK_DATA : { round: '?' }).round;
+  document.getElementById('upcoming-round-label').textContent = `Round ${round}`;
+
+  if (upcomingGames.length === 0) {
+    upcomingGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div>
+      <p>No upcoming games found for this round.</p></div>`;
+  } else {
+    upcomingGames.forEach(g => upcomingGrid.appendChild(renderGameCard(g)));
+  }
+}
+
+/* ================================================================
+   GAME DETAIL VIEW
+   ================================================================ */
+function openGameDetail(game) {
+  State.currentGame = game;
+  document.getElementById('detail-matchup').textContent = `${game.teamA.name} vs ${game.teamB.name}`;
+
+  const liveScoreEl = document.getElementById('detail-live-score');
+  if (game.status === 'live') {
+    liveScoreEl.textContent = `${game.teamA.score} – ${game.teamB.score}  |  Q${game.quarter} ${game.timeRemaining}`;
+    document.getElementById('overlay-toggle-btn').style.display = 'flex';
+  } else {
+    liveScoreEl.textContent = `${game.date} · ${game.time}`;
+    document.getElementById('overlay-toggle-btn').style.display = 'none';
+  }
+
+  showView('game-detail');
+}
+
+document.getElementById('game-detail-back').addEventListener('click', () => showView('watch'));
+
+// Import Opponent toggle
+document.getElementById('btn-import-opponent').addEventListener('click', () => {
+  const panel = document.getElementById('import-opponent-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+document.getElementById('btn-cancel-opponent').addEventListener('click', () => {
+  document.getElementById('import-opponent-panel').style.display = 'none';
+});
+document.getElementById('btn-save-opponent').addEventListener('click', () => {
+  const text = document.getElementById('opponent-team-input').value.trim();
+  if (!State.activeProfile) return;
+  State.activeProfile.opponentTeam = text.split('\n').map(s => s.trim()).filter(Boolean);
+  saveCurrentProfile();
+  document.getElementById('import-opponent-panel').style.display = 'none';
+  showToast('📋', 'Opponent team saved', `${State.activeProfile.opponentTeam.length} players imported`, 0);
+});
+
+document.getElementById('btn-customise-players').addEventListener('click', () => {
+  showView('customise');
+  renderCustomTeams();
+});
+
+// Begin Overlay
+document.getElementById('btn-begin-overlay').addEventListener('click', () => {
+  if (!State.currentGame) return;
+  if (State.customTeams.length === 0) {
+    showToast('⚠️', 'No teams configured', 'Add at least one custom team first', 0);
+    return;
+  }
+  activateOverlay();
+});
+
+/* ================================================================
+   CUSTOMISE PLAYERS (View 3)
+   ================================================================ */
+document.getElementById('customise-back').addEventListener('click', () => showView('game-detail'));
+
+document.getElementById('btn-add-team').addEventListener('click', () => {
+  if (State.customTeams.length >= 5) {
+    showToast('⚠️', 'Max 5 teams', 'Remove a team to add another', 0);
+    return;
+  }
+  const newTeam = {
+    id: `team_${Date.now()}`,
+    name: `My Team ${State.customTeams.length + 1}`,
+    color: ['#3b82f6','#00ff88','#ffb800','#ef4444','#a855f7'][State.customTeams.length],
+    playerIds: [],
+    collapsed: false,
+  };
+  State.customTeams.push(newTeam);
+  renderCustomTeams();
+});
+
+document.getElementById('btn-scoreboard-mode').addEventListener('click', () => {
+  showConfirm(
+    'Full Scoreboard Mode resets all custom teams and shows complete player lists. Toaster notifications will be disabled. Continue?',
+    () => {
+      State.scoreboardMode = true;
+      State.customTeams = [];
+      renderCustomTeams();
+      showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0);
+    }
+  );
+});
+
+document.getElementById('btn-save-customise').addEventListener('click', () => {
+  if (State.activeProfile) {
+    State.activeProfile.customTeams = State.customTeams;
+    saveCurrentProfile();
+  }
+  showView('game-detail');
+});
+
+function renderCustomTeams() {
+  const container = document.getElementById('custom-teams-container');
+  const countLabel = document.getElementById('team-count-label');
+  countLabel.textContent = `${State.customTeams.length} / 5 teams`;
+  container.innerHTML = '';
+
+  if (State.customTeams.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="empty-icon">👥</div>
+      <p>No teams yet. Click "+ Add Team" to get started.</p></div>`;
+    return;
+  }
+
+  State.customTeams.forEach((team, idx) => {
+    const card = document.createElement('div');
+    card.className = `custom-team-card${team.collapsed ? ' collapsed' : ''}`;
+    card.setAttribute('role', 'listitem');
+
+    // Get all players in current game
+    const gamePlayers = State.currentGame ? State.currentGame.players : [];
+
+    const playerListHtml = gamePlayers.map(p => {
+      const selected = team.playerIds.includes(p.id);
+      return `<div class="player-select-item${selected ? ' selected' : ''}" 
+                   data-player-id="${p.id}" role="option" 
+                   aria-selected="${selected}" tabindex="0">
+        <span class="player-jersey">#${p.jersey}</span>
+        <span>${escHtml(p.name)}</span>
+        <span class="text-muted text-sm">${p.pos}</span>
+        <span class="player-check">✓</span>
+      </div>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="custom-team-header" style="border-left-color:${team.color}" 
+           role="button" tabindex="0" aria-expanded="${!team.collapsed}" 
+           aria-label="Toggle ${escHtml(team.name)}">
+        <div class="custom-team-header-left">
+          <div class="custom-team-name-display" style="color:${team.color}">${escHtml(team.name)}</div>
+          <span class="custom-team-count">${team.playerIds.length} players</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <span style="color:var(--text-muted);font-size:1rem;">${team.collapsed ? '▼' : '▲'}</span>
+          <button class="btn btn-danger btn-sm" data-delete-idx="${idx}" aria-label="Delete ${escHtml(team.name)}">✕</button>
+        </div>
+      </div>
+      <div class="custom-team-body">
+        <div class="flex gap-12 mb-16" style="flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:180px;margin-bottom:0">
+            <label>Team Name</label>
+            <input type="text" class="team-name-input" value="${escHtml(team.name)}" 
+                   data-team-idx="${idx}" aria-label="Team name" />
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label>Colour</label>
+            <input type="color" class="team-color-input" value="${team.color}" 
+                   data-team-idx="${idx}" style="height:42px;width:60px;border-radius:8px;cursor:pointer;border:1px solid var(--border);background:transparent;padding:2px;" 
+                   aria-label="Team colour" />
+          </div>
+        </div>
+        ${gamePlayers.length > 0
+          ? `<label style="margin-bottom:6px;display:block">Select Players</label>
+             <div class="player-select-list" data-team-idx="${idx}" role="listbox" aria-label="Player selection" aria-multiselectable="true">
+               ${playerListHtml}
+             </div>`
+          : `<p class="text-muted text-sm">Select a live game first to see available players.</p>`
+        }
+      </div>
+    `;
+
+    // Toggle collapse
+    const header = card.querySelector('.custom-team-header');
+    header.addEventListener('click', e => {
+      if (e.target.closest('[data-delete-idx]')) return;
+      team.collapsed = !team.collapsed;
+      renderCustomTeams();
+    });
+    header.addEventListener('keydown', e => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.target.closest('[data-delete-idx]')) {
+        team.collapsed = !team.collapsed;
+        renderCustomTeams();
+      }
+    });
+
+    // Delete button
+    card.querySelector('[data-delete-idx]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      State.customTeams.splice(idx, 1);
+      renderCustomTeams();
+    });
+
+    // Name input
+    card.querySelector('.team-name-input').addEventListener('input', e => {
+      State.customTeams[idx].name = e.target.value;
+      // Update header display without full re-render
+      card.querySelector('.custom-team-name-display').textContent = e.target.value;
+    });
+
+    // Color input
+    card.querySelector('.team-color-input').addEventListener('input', e => {
+      State.customTeams[idx].color = e.target.value;
+      header.style.borderLeftColor = e.target.value;
+      card.querySelector('.custom-team-name-display').style.color = e.target.value;
+    });
+
+    // Player multi-select
+    card.querySelectorAll('.player-select-item').forEach(item => {
+      const togglePlayer = () => {
+        const pid = item.dataset.playerId;
+        const pidIdx = team.playerIds.indexOf(pid);
+        if (pidIdx === -1) {
+          team.playerIds.push(pid);
+          item.classList.add('selected');
+          item.setAttribute('aria-selected', 'true');
+        } else {
+          team.playerIds.splice(pidIdx, 1);
+          item.classList.remove('selected');
+          item.setAttribute('aria-selected', 'false');
+        }
+        // Update count
+        card.querySelector('.custom-team-count').textContent = `${team.playerIds.length} players`;
+      };
+      item.addEventListener('click', togglePlayer);
+      item.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') togglePlayer(); });
+    });
+
+    container.appendChild(card);
+  });
+}
+
+/* ================================================================
+   OVERLAY (View 4)
+   Fixed, draggable, always-on-top scoring panel
+   ================================================================ */
+function activateOverlay() {
+  State.overlayVisible = true;
+  const overlay = document.getElementById('overlay');
+  overlay.classList.add('active');
+  State.overlayMinimised = false;
+  overlay.classList.remove('minimised');
+  renderOverlayTables();
+}
+
+function deactivateOverlay() {
+  State.overlayVisible = false;
+  document.getElementById('overlay').classList.remove('active');
+}
+
+document.getElementById('overlay-toggle-btn').addEventListener('click', () => {
+  State.overlayVisible ? deactivateOverlay() : activateOverlay();
+});
+
+document.getElementById('overlay-close-btn').addEventListener('click', deactivateOverlay);
+
+document.getElementById('overlay-minimise-btn').addEventListener('click', () => {
+  State.overlayMinimised = !State.overlayMinimised;
+  const overlay = document.getElementById('overlay');
+  overlay.classList.toggle('minimised', State.overlayMinimised);
+  document.getElementById('overlay-minimise-btn').textContent = State.overlayMinimised ? '+' : '−';
+});
+
+// Opacity sync (overlay slider → setting slider and vice versa)
+document.getElementById('overlay-opacity-slider').addEventListener('input', e => {
+  setOverlayOpacity(e.target.value);
+  document.getElementById('setting-opacity').value = e.target.value;
+  updateOpacityDisplay(e.target.value);
+  if (State.activeProfile) {
+    State.activeProfile.settings.overlayOpacity = parseInt(e.target.value);
+    saveCurrentProfile();
+  }
+});
+
+/* ---- DRAGGABLE OVERLAY ---- */
+(function initDrag() {
+  const overlay = document.getElementById('overlay');
+  const handle  = document.getElementById('overlay-drag-handle');
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+
+  const getOverlayRect = () => overlay.getBoundingClientRect();
+
+  function onPointerDown(e) {
+    if (e.target.closest('.overlay-btn')) return; // don't drag on buttons
+    isDragging = true;
+    overlay.classList.add('dragging');
+    const rect = getOverlayRect();
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    // Switch from CSS default positioning to explicit
+    overlay.style.left  = startLeft + 'px';
+    overlay.style.top   = startTop  + 'px';
+    overlay.style.right = 'auto';
+    overlay.style.bottom = 'auto';
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const maxX = window.innerWidth  - overlay.offsetWidth;
+    const maxY = window.innerHeight - overlay.offsetHeight;
+    overlay.style.left = Math.max(0, Math.min(maxX, startLeft + dx)) + 'px';
+    overlay.style.top  = Math.max(0, Math.min(maxY, startTop  + dy)) + 'px';
+  }
+
+  function onPointerUp() {
+    isDragging = false;
+    overlay.classList.remove('dragging');
+  }
+
+  handle.addEventListener('pointerdown', onPointerDown);
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup',   onPointerUp);
+})();
+
+/** Renders all overlay team tables from current State.customTeams */
+function renderOverlayTables() {
+  const wrap = document.getElementById('overlay-tables-wrap');
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) return;
+
+  const teams = State.scoreboardMode
+    ? [{ id: 'all', name: 'All Players', color: 'var(--accent-blue)',
+         playerIds: State.currentGame.players.map(p => p.id) }]
+    : State.customTeams;
+
+  if (teams.length === 0) {
+    wrap.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:0.8rem;text-align:center;">
+      No teams configured. Set up teams in Customise Players.</div>`;
+    return;
+  }
+
+  teams.forEach(team => {
+    const players = (State.currentGame.players || [])
+      .filter(p => team.playerIds.includes(p.id));
+
+    const tableEl = document.createElement('div');
+    tableEl.className = 'overlay-team-table';
+    tableEl.dataset.teamId = team.id;
+
+    const rows = players.map(p => `
+      <tr>
+        <td style="color:var(--text-muted)">#${p.jersey}</td>
+        <td>${escHtml(p.name)}</td>
+        <td id="score-cell-${team.id}-${p.id}" class="player-score-cell">
+          ${p.score}
+        </td>
+      </tr>
+    `).join('');
+
+    tableEl.innerHTML = `
+      <div class="overlay-team-name" style="border-left-color:${team.color}">
+        ${escHtml(team.name)}
+        <span style="color:var(--text-muted);font-size:0.7rem;margin-left:8px;">
+          ${players.reduce((s, p) => s + (p.score || 0), 0)} pts
+        </span>
+      </div>
+      <table class="overlay-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Player</th><th>Score</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    wrap.appendChild(tableEl);
+  });
+}
+
+/**
+ * Update overlay scores after a data poll.
+ * Diffs against prevScores and adds flash animations.
+ * @param {Array} players - Updated player array from poll
+ */
+function updateOverlayScores(players) {
+  if (!State.overlayVisible) return;
+
+  players.forEach(p => {
+    const prev = State.prevScores[p.id] ?? p.score;
+    State.customTeams.forEach(team => {
+      if (!team.playerIds.includes(p.id)) return;
+      const cell = document.getElementById(`score-cell-${team.id}-${p.id}`);
+      if (!cell) return;
+      cell.textContent = p.score;
+      if (p.score !== prev) {
+        const cls = p.score > prev ? 'score-flash-up' : 'score-flash-down';
+        cell.classList.remove('score-flash-up', 'score-flash-down');
+        // Force reflow to re-trigger animation
+        void cell.offsetWidth;
+        cell.classList.add(cls);
+        cell.addEventListener('animationend', () => cell.classList.remove(cls), { once: true });
+      }
+    });
+    State.prevScores[p.id] = p.score;
+  });
+
+  // Update team totals in headers
+  State.customTeams.forEach(team => {
+    const total = players
+      .filter(p => team.playerIds.includes(p.id))
+      .reduce((s, p) => s + (p.score || 0), 0);
+    const nameEl = document.querySelector(`.overlay-team-table[data-team-id="${team.id}"] .overlay-team-name`);
+    if (nameEl) {
+      // Update the pts span
+      const span = nameEl.querySelector('span');
+      if (span) span.textContent = `${total} pts`;
+    }
+  });
+}
+
+/* ================================================================
+   OVERLAY POSITIONING & OPACITY
+   ================================================================ */
+function setOverlayOpacity(pct) {
+  document.getElementById('overlay').style.opacity = pct / 100;
+}
+
+function applyOverlayPosition(position) {
+  const el = document.getElementById('overlay');
+  el.style.cssText = `opacity:${document.getElementById('overlay').style.opacity};`;
+  switch(position) {
+    case 'top-right':    el.style.top='80px'; el.style.right='20px'; el.style.left='auto'; el.style.bottom='auto'; break;
+    case 'top-left':     el.style.top='80px'; el.style.left='20px'; el.style.right='auto'; el.style.bottom='auto'; break;
+    case 'bottom-right': el.style.bottom='90px'; el.style.right='20px'; el.style.left='auto'; el.style.top='auto'; break;
+    case 'bottom-left':  el.style.bottom='90px'; el.style.left='20px'; el.style.right='auto'; el.style.top='auto'; break;
+  }
+}
+
+function updateOpacityDisplay(val) {
+  const el = document.getElementById('opacity-value');
+  if (el) el.textContent = `${val}%`;
+}
+function updateVolumeDisplay(val) {
+  const el = document.getElementById('volume-value');
+  if (el) el.textContent = `${val}%`;
+}
+
+/* ================================================================
+   TOAST NOTIFICATIONS
+   ================================================================ */
+/**
+ * Show a toast notification.
+ * @param {string} icon       - Emoji icon
+ * @param {string} player     - Player name (or heading)
+ * @param {string} action     - Action description
+ * @param {number} points     - Points earned (0 = no points display)
+ */
+function showToast(icon, player, action, points) {
+  // Check if toasts are enabled (and not in scoreboard mode for scoring events)
+  if (State.activeProfile) {
+    const toastsOn = State.activeProfile.settings.toastsEnabled;
+    if (!toastsOn && points !== 0) return; // allow system toasts (points===0)
+    if (State.scoreboardMode && points !== 0) return;
+  }
+
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.setAttribute('role', 'alert');
+
+  const pointsHtml = points !== 0
+    ? `<span class="toast-points${points < 0 ? ' negative' : ''}">${points > 0 ? '+' : ''}${points}pts</span>`
+    : '';
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <div class="toast-content">
+      <div class="toast-player">${escHtml(player)}</div>
+      <div class="toast-action">${escHtml(action)}</div>
+    </div>
+    ${pointsHtml}
+  `;
+
+  container.appendChild(toast);
+
+  // Play sound if enabled
+  if (State.activeProfile?.settings.soundEnabled) {
+    playNotificationBeep(State.activeProfile.settings.soundVolume);
+  }
+
+  // Auto-dismiss after 4 seconds
+  setTimeout(() => {
+    toast.style.animation = 'toast-out 0.3s ease both';
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  }, 4000);
+}
+
+/** Simple beep using Web Audio API — no external sounds needed */
+function playNotificationBeep(volume = 60) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = (volume / 100) * 0.3;
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  } catch { /* Audio not supported */ }
+}
+
+/* ================================================================
+   DATA LAYER — Polling + Fetching
+   ================================================================ */
+
+/**
+ * Fetch game data from the Netlify proxy function.
+ * Falls back to mock data on failure or in mock mode.
+ *
+ * NOTE: The Netlify function at /netlify/functions/fanfooty-proxy
+ * must be deployed for real data. See fanfooty-proxy.js for details.
+ *
+ * @returns {Promise<{liveGames: Array, upcomingGames: Array}>}
+ */
+async function fetchGameData() {
+  if (State.isMockMode) return simulateMockData();
+
+  try {
+    const res = await fetch('/api/fanfooty-proxy');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.warn('[FootyOverlay] Fetch failed, falling back to mock data:', err.message);
+    State.isMockMode = true; // auto-switch to mock on failure
+    document.body.classList.add('mock-mode');
+    return simulateMockData();
+  }
+}
+
+/**
+ * Simulates live score changes in mock data for demo purposes.
+ * Every call increments some scores randomly to demo flash animations.
+ */
+function simulateMockData() {
+  const data = JSON.parse(JSON.stringify(MOCK_DATA)); // deep clone
+  // Simulate score ticks on live games
+  data.liveGames.forEach(game => {
+    game.players.forEach(p => {
+      // 20% chance of a score change each poll
+      if (Math.random() < 0.2) {
+        const scoringSystem = State.activeProfile?.settings.scoringSystem || 'afl_fantasy';
+        const pts = scoringSystem === 'supercoach' ? SUPERCOACH_POINTS : AFL_FANTASY_POINTS;
+        const actions = [
+          { key: 'goal',    label: 'Goal',    pts: pts.goal    },
+          { key: 'mark',    label: 'Mark',    pts: pts.mark    },
+          { key: 'tackle',  label: 'Tackle',  pts: pts.tackle  },
+          { key: 'kick',    label: 'Kick',    pts: pts.kick    },
+          { key: 'handball',label: 'Handball',pts: pts.handball},
+        ];
+        const action = actions[Math.floor(Math.random() * actions.length)];
+        const delta = Math.round(action.pts);
+        p.score = (p.score || 0) + delta;
+
+        // Only fire toast if this player is in a tracked team
+        const isTracked = State.customTeams.some(t => t.playerIds.includes(p.id));
+        if (isTracked && State.overlayVisible) {
+          showToast('⚡', p.name, action.label, delta);
+        }
+      }
+    });
+  });
+  return { liveGames: data.liveGames, upcomingGames: data.upcomingGames, round: data.round };
+}
+
+/** Main poll — refreshes live game data */
+async function pollLiveData() {
+  const data = await fetchGameData();
+  State.liveGames     = data.liveGames;
+  State.upcomingGames = data.upcomingGames;
+
+  // Re-render watch tab if it's active
+  if (State.activeView === 'watch') {
+    renderWatchTab(State.liveGames, State.upcomingGames);
+  }
+
+  // Update current game if open
+  if (State.currentGame) {
+    const updated = data.liveGames.find(g => g.id === State.currentGame.id);
+    if (updated) {
+      const prevPlayers = State.currentGame.players;
+      State.currentGame = updated;
+      updateOverlayScores(updated.players);
+      // Emit toasts for each changed player
+      updated.players.forEach(p => {
+        const prev = prevPlayers.find(pp => pp.id === p.id);
+        if (prev && p.score !== prev.score) {
+          State.prevScores[p.id] = prev.score;
+        }
+      });
+    }
+  }
+}
+
+/** Sets up polling timers. Call once on init, and whenever interval setting changes. */
+function startPolling() {
+  stopPolling();
+  const interval = (State.activeProfile?.settings.pollInterval || 30) * 1000;
+  // Initial fetch immediately
+  pollLiveData();
+  State.pollingTimers.live = setInterval(pollLiveData, interval);
+  // Upcoming games refresh every 5 minutes
+  State.pollingTimers.upcoming = setInterval(pollLiveData, 5 * 60 * 1000);
+}
+
+function stopPolling() {
+  clearInterval(State.pollingTimers.live);
+  clearInterval(State.pollingTimers.upcoming);
+}
+
+/* ================================================================
+   SETTINGS WIRING
+   ================================================================ */
+document.getElementById('setting-opacity').addEventListener('input', e => {
+  setOverlayOpacity(e.target.value);
+  updateOpacityDisplay(e.target.value);
+  document.getElementById('overlay-opacity-slider').value = e.target.value;
+  if (State.activeProfile) {
+    State.activeProfile.settings.overlayOpacity = parseInt(e.target.value);
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-position').addEventListener('change', e => {
+  applyOverlayPosition(e.target.value);
+  if (State.activeProfile) {
+    State.activeProfile.settings.overlayPosition = e.target.value;
+    saveCurrentProfile();
+  }
+});
+
+document.querySelectorAll('[name="scoring-system"]').forEach(r => {
+  r.addEventListener('change', e => {
+    if (State.activeProfile) {
+      State.activeProfile.settings.scoringSystem = e.target.value;
+      saveCurrentProfile();
+    }
+  });
+});
+
+document.getElementById('setting-toasts').addEventListener('change', e => {
+  if (State.activeProfile) {
+    State.activeProfile.settings.toastsEnabled = e.target.checked;
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-sound').addEventListener('change', e => {
+  const soundRow = document.getElementById('sound-volume-row');
+  soundRow.style.display = e.target.checked ? 'flex' : 'none';
+  if (State.activeProfile) {
+    State.activeProfile.settings.soundEnabled = e.target.checked;
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-volume').addEventListener('input', e => {
+  updateVolumeDisplay(e.target.value);
+  if (State.activeProfile) {
+    State.activeProfile.settings.soundVolume = parseInt(e.target.value);
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-poll-interval').addEventListener('change', e => {
+  if (State.activeProfile) {
+    State.activeProfile.settings.pollInterval = parseInt(e.target.value);
+    saveCurrentProfile();
+    startPolling(); // restart with new interval
+  }
+});
+
+document.getElementById('btn-clear-data').addEventListener('click', () => {
+  showConfirm(
+    '⚠️ This will permanently delete all profiles, teams, and settings. Are you sure?',
+    () => {
+      stopPolling();
+      lsClear();
+      location.reload();
+    }
+  );
+});
+
+/* ================================================================
+   TEAM TAB
+   ================================================================ */
+document.getElementById('btn-import-team').addEventListener('click', () => {
+  const panel = document.getElementById('import-team-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('btn-cancel-import-team').addEventListener('click', () => {
+  document.getElementById('import-team-panel').style.display = 'none';
+});
+
+document.getElementById('btn-confirm-import-team').addEventListener('click', async () => {
+  const text = document.getElementById('team-import-text').value.trim();
+  if (!text || !State.activeProfile) return;
+
+  // Parse: one full player name per line. Strip blank lines and duplicates.
+  const names = [...new Set(
+    text.split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+  )];
+
+  if (names.length === 0) return;
+
+  // Build player objects immediately so the table renders without waiting for lookup.
+  // Jersey starts as null — the loading spinner is shown in that cell until lookup returns.
+  const players = names.map((name, i) => ({
+    id:         `import_${i}_${Date.now()}`,
+    name,
+    jersey:     null,   // null = pending lookup
+    team:       null,
+    weekScore:  0,
+    totalScore: 0,
+  }));
+
+  State.activeProfile.team = players;
+  saveCurrentProfile();
+
+  // Render immediately with spinners in jersey column
+  renderTeamTable(players);
+  document.getElementById('import-team-panel').style.display = 'none';
+
+  // Kick off jersey lookup in the background
+  await lookupJerseyNumbers(players);
+});
+
+/**
+ * Calls the jersey-lookup Netlify function for a list of players.
+ * Mutates the player objects in-place and re-renders the table once resolved.
+ * Falls back gracefully if the function is unreachable.
+ *
+ * @param {Array} players - The current team array from State.activeProfile.team
+ */
+async function lookupJerseyNumbers(players) {
+  const names = players.map(p => p.name).join(',');
+  let results = [];
+
+  try {
+    const res = await fetch(`/api/jersey-lookup?names=${encodeURIComponent(names)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    results = await res.json();
+  } catch (err) {
+    console.warn('[FootyOverlay] Jersey lookup failed, using fallback map:', err.message);
+    // Build results from hardcoded fallback so table still populates
+    results = players.map(p => {
+      const entry = JERSEY_FALLBACK[p.name];
+      return entry
+        ? { name: p.name, jersey: entry.jersey, team: entry.team }
+        : { name: p.name, jersey: null, team: null };
+    });
+  }
+
+  // Merge lookup results back into player objects
+  results.forEach(result => {
+    const player = players.find(p => p.name === result.name);
+    if (player) {
+      player.jersey = result.jersey ?? null;
+      player.team   = result.team   ?? null;
+    }
+  });
+
+  // Persist updated jerseys and re-render
+  if (State.activeProfile) {
+    State.activeProfile.team = players;
+    saveCurrentProfile();
+  }
+  renderTeamTable(players);
+}
+
+/**
+ * Renders the My Team table.
+ * Columns: # (jersey) | Player | This Week | Total
+ * Jersey cells show a spinner while jersey === null (lookup pending),
+ * '?' if lookup returned no result, or the number if found.
+ *
+ * @param {Array} players
+ */
+function renderTeamTable(players) {
+  const wrap = document.getElementById('my-team-table-wrap');
+
+  if (!players || players.length === 0) {
+    wrap.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div>
+      <p>No team imported yet. Click "Import Team" to paste your AFL Fantasy or SuperCoach lineup.</p></div>`;
+    return;
+  }
+
+  const totalWeek  = players.reduce((s, p) => s + (p.weekScore  || 0), 0);
+  const totalScore = players.reduce((s, p) => s + (p.totalScore || 0), 0);
+
+  /**
+   * Jersey cell content:
+   *   null  → lookup is still in-flight, show spinner
+   *   false → explicitly not found, show '?'
+   *   number → render #N, with team name as tooltip if available
+   */
+  function jerseyCell(p) {
+    if (p.jersey === null) {
+      // Spinner: inline SVG so no external dependency needed
+      return `<span class="jersey-spinner" aria-label="Looking up jersey number">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg"
+                     style="animation:spin 0.7s linear infinite;display:block">
+                  <circle cx="7" cy="7" r="5.5" stroke="rgba(255,255,255,0.15)" stroke-width="2"/>
+                  <path d="M7 1.5A5.5 5.5 0 0 1 12.5 7" stroke="var(--accent-blue)" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </span>`;
+    }
+    if (!p.jersey) return `<span style="color:var(--text-muted)">?</span>`;
+    const title = p.team ? ` title="${escHtml(p.team)}"` : '';
+    return `<span${title}>#${p.jersey}</span>`;
+  }
+
+  const rows = players.map(p => `
+    <tr data-player-id="${escHtml(p.id)}">
+      <td class="jersey-cell" style="color:var(--text-muted); min-width:40px">${jerseyCell(p)}</td>
+      <td>
+        ${escHtml(p.name)}
+        ${p.team ? `<span style="color:var(--text-muted);font-size:0.75rem;margin-left:6px">${escHtml(p.team)}</span>` : ''}
+      </td>
+      <td class="player-score-cell${(p.weekScore || 0) > 100 ? ' high' : ''}">${p.weekScore || 0}</td>
+      <td class="player-score-cell">${p.totalScore || 0}</td>
+    </tr>
+  `).join('');
+
+  wrap.innerHTML = `
+    <table class="team-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Player</th>
+          <th>This Week</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr class="player-total-row">
+          <td colspan="2" style="text-align:right; color:var(--text-muted)">TOTAL</td>
+          <td class="player-score-cell">${totalWeek}</td>
+          <td class="player-score-cell">${totalScore}</td>
+        </tr>
+      </tbody>
+    </table>
+  `;
+}
+
+/* ================================================================
+   UTILITY
+   ================================================================ */
+/** Safely escapes HTML to prevent XSS */
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+/* ================================================================
+   INIT — Entry point
+   ================================================================ */
+function init() {
+  // Check for mock mode URL param
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('mock') === 'true') {
+    State.isMockMode = true;
+    document.body.classList.add('mock-mode');
+    console.info('[FootyOverlay] Running in MOCK MODE — no live data will be fetched.');
+  }
+
+  // Load profiles from localStorage
+  loadProfiles();
+
+  // Attempt to restore last active profile
+  const lastId = lsGet('activeProfileId');
+  const lastProfile = State.profiles.find(p => p.id === lastId);
+
+  if (lastProfile) {
+    setActiveProfile(lastProfile);
+    // Load team if any
+    if (lastProfile.team?.length) renderTeamTable(lastProfile.team);
+    startPolling();
+    showView('watch');
+    // Initial render with empty data while fetch runs
+    renderWatchTab([], []);
+  } else if (State.profiles.length === 0) {
+    // First ever load — show profile selector
+    openProfileSelector();
+    // We still start polling so the background data is ready
+    startPolling();
+    renderWatchTab([], []);
+  } else {
+    // Profiles exist but no lastId — show selector
+    openProfileSelector();
+    startPolling();
+    renderWatchTab([], []);
+  }
+
+  console.info('[FootyOverlay] Initialised.', {
+    mockMode: State.isMockMode,
+    profiles: State.profiles.length,
+    activeProfile: State.activeProfile?.name || 'none',
+  });
+}
+
+// Kick off
+init();
+</script>
+
+</body>
+</html>

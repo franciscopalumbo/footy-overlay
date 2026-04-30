@@ -1,0 +1,83 @@
+# ============================================================
+# netlify.toml — FootyOverlay Netlify Configuration
+# ============================================================
+# Deploy: push to GitHub and connect repo in Netlify dashboard,
+# or use `netlify deploy` via the Netlify CLI.
+# ============================================================
+
+[build]
+  # No build step required — index.html is the complete app.
+  # Netlify will serve it directly from the repo root.
+  publish = "."
+  functions = "netlify/functions"
+
+[build.environment]
+  # Set FANFOOTY_MOCK=true here during development to use mock data
+  # and avoid hitting FanFooty on every function invocation.
+  # Change to "false" (or remove) for production.
+  FANFOOTY_MOCK = "true"
+
+  # Node version for serverless functions
+  NODE_VERSION = "18"
+
+# ============================================================
+# REDIRECTS
+# ============================================================
+
+# Route /api/fanfooty-proxy → the serverless function.
+# This allows the front-end to call /api/fanfooty-proxy without
+# knowing the /.netlify/functions/ path (cleaner, more portable).
+[[redirects]]
+  from   = "/api/fanfooty-proxy"
+  to     = "/.netlify/functions/fanfooty-proxy"
+  status = 200
+
+[[redirects]]
+  from   = "/api/jersey-lookup"
+  to     = "/.netlify/functions/jersey-lookup"
+  status = 200
+
+# SPA fallback — all unmatched routes serve index.html.
+# Required if you ever add client-side routing or deep-link URLs.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
+
+# ============================================================
+# HEADERS — Security & performance
+# ============================================================
+
+# Apply security headers to all pages
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options           = "SAMEORIGIN"
+    X-Content-Type-Options    = "nosniff"
+    X-XSS-Protection          = "1; mode=block"
+    Referrer-Policy           = "strict-origin-when-cross-origin"
+    Permissions-Policy        = "camera=(), microphone=(), geolocation=()"
+    # Content Security Policy:
+    # - Allows Google Fonts (fonts.googleapis.com, fonts.gstatic.com)
+    # - Allows our own Netlify function calls (self)
+    # - Allows inline styles/scripts (needed for the single-file SPA)
+    # Tighten nonce-based CSP once you move scripts to external files.
+    Content-Security-Policy   = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; img-src 'self' data:;"
+
+# Cache static assets aggressively — the HTML file itself should not be cached
+# so users always get the latest version on refresh.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+# ============================================================
+# FUNCTIONS CONFIG
+# ============================================================
+
+[functions]
+  # Directory containing serverless functions
+  directory = "netlify/functions"
+
+  # Node.js runtime for all functions
+  node_bundler = "esbuild"
