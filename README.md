@@ -14,9 +14,8 @@ A single-file SPA that sits over your AFL viewing experience and shows real-time
 4. [FanFooty Scraping — Implementation Guide](#4-fanfooty-scraping--implementation-guide)
 5. [Capacitor — Android TV Build](#5-capacitor--android-tv-build)
 6. [App Features](#6-app-features)
-7. [Scoring Systems](#7-scoring-systems)
-8. [File Structure](#8-file-structure)
-9. [Troubleshooting](#9-troubleshooting)
+7. [File Structure](#7-file-structure)
+8. [Troubleshooting](#8-troubleshooting)
 
 ---
 
@@ -311,10 +310,9 @@ Then run `npx cap sync android` again to apply.
 
 | Feature | Description |
 |---------|-------------|
-| **Watch Tab** | Live and upcoming AFL games for the current round |
+| **Watch Tab** | Live, upcoming and recent AFL games for the current round |
 | **Game Cards** | Live: shows score, quarter, time. Upcoming: date, time, venue |
 | **Game Detail** | Matchup header, import opponent, customise tracked teams, begin overlay |
-| **Import Opponent** | Paste opponent's fantasy lineup for comparison |
 | **Customise Players** | Create up to 5 named colour-coded tracking teams from players in the game |
 | **Full Scoreboard Mode** | Shows all players from both teams — disables toast notifications |
 | **Live Overlay** | Fixed, draggable scoring panel with per-team tables |
@@ -322,49 +320,12 @@ Then run `npx cap sync android` again to apply.
 | **Toast Notifications** | Pop-up alerts for tracked player scoring actions |
 | **Notification Sound** | Web Audio API beep on scoring events (no external sounds) |
 | **Profile Selector** | Netflix-style multi-profile support, all data isolated per profile |
-| **Team Tab** | Import and display your fantasy team with weekly/total scores |
 | **Settings** | Scoring system, overlay opacity/position, poll interval, notification controls |
 | **Mock Mode** | `?mock=true` for dev/demo — no live data needed |
 
 ---
 
-## 7. Scoring Systems
-
-Point values are hardcoded in both the front-end (`index.html`) and back-end (`fanfooty-proxy.js`). Update them in one place if AFL Fantasy or SuperCoach change their scoring rules.
-
-### AFL Fantasy
-
-| Action        | Points |
-|---------------|--------|
-| Goal          | +6     |
-| Behind        | +1     |
-| Mark          | +3     |
-| Handball      | +2     |
-| Kick          | +3     |
-| Tackle        | +4     |
-| HB Clanger    | −3     |
-| Kick Clanger  | −3     |
-| Free For      | +1     |
-| Free Against  | −3     |
-
-### SuperCoach
-
-| Action        | Points |
-|---------------|--------|
-| Goal          | +8     |
-| Behind        | +0.4   |
-| Mark          | +4     |
-| Handball      | +1     |
-| Kick          | +3     |
-| Tackle        | +4     |
-| HB Clanger    | −4     |
-| Kick Clanger  | −4     |
-| Free For      | +1     |
-| Free Against  | −3     |
-
----
-
-## 8. File Structure
+## 7. File Structure
 
 ```
 footyoverlay/
@@ -382,7 +343,7 @@ footyoverlay/
 
 ---
 
-## 9. Troubleshooting
+## 8. Troubleshooting
 
 **The overlay doesn't show scores**
 → Make sure you've selected at least one custom team in "Customise Players" and clicked "Begin Overlay". The overlay requires a game to be selected first.
