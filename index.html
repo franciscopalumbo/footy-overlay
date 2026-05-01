@@ -476,6 +476,17 @@
       color: var(--text-muted);
     }
 
+    .final-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-alert);
+      border: 1px solid var(--accent-alert);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
     .game-quarter {
       font-size: 0.72rem;
       color: var(--accent-alert);
@@ -928,7 +939,7 @@
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      overflow: hidden;
+      overflow: visible; /* must be visible so colour popover isn't clipped */
       transition: var(--transition);
     }
 
@@ -939,24 +950,56 @@
       padding: 12px 16px;
       border-left: 5px solid var(--accent-blue);
       background: rgba(255,255,255,0.03);
+      overflow: hidden; /* clip children to card header radius */
+      border-radius: var(--radius) var(--radius) 0 0;
     }
 
-    /* Colour swatch strip on team card header */
-    .colour-swatches {
-      display: flex;
-      gap: 5px;
-      align-items: center;
+    .team-card-body {
+      overflow: hidden;
+    }
+
+    .team-card-footer {
+      overflow: hidden;
+    }
+
+    /* Colour picker — single circle button; popover is appended to body */
+    .colour-picker-wrap {
+      position: relative;
       flex-shrink: 0;
     }
+    .colour-picker-btn {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.35);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.15s, transform 0.15s;
+      background: var(--accent-blue); /* overridden inline */
+      padding: 0;
+    }
+    .colour-picker-btn:hover { border-color: rgba(255,255,255,0.8); transform: scale(1.1); }
+    /* Popover — appended to <body> so it is never clipped by card overflow */
+    .colour-popover {
+      position: absolute;
+      z-index: 450;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-hover);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      box-shadow: var(--shadow);
+    }
     .colour-swatch {
-      width: 18px; height: 18px;
+      width: 22px; height: 22px;
       border-radius: 50%;
       cursor: pointer;
       border: 2px solid transparent;
       flex-shrink: 0;
-      transition: transform 0.15s, border-color 0.15s;
+      transition: transform 0.12s, border-color 0.12s;
     }
-    .colour-swatch:hover { transform: scale(1.2); }
+    .colour-swatch:hover { transform: scale(1.18); }
     .colour-swatch.active { border-color: #fff; }
 
     .team-card-name {
@@ -990,6 +1033,7 @@
 
     .team-card-body {
       padding: 0;
+      overflow: hidden;
     }
 
     /* Player list inside a team card */
@@ -1348,6 +1392,8 @@
       to   { opacity: 0; transform: translateX(20px); }
     }
 
+    .toast.negative { border-left-color: var(--accent-red); }
+    .toast.neutral  { border-left-color: var(--accent-alert); }
     .toast-icon { font-size: 1.2rem; margin-top: 1px; }
     .toast-content { flex: 1; }
     .toast-player { font-weight: 600; font-size: 0.85rem; }
@@ -1373,6 +1419,35 @@
       border-bottom: 1px solid var(--border);
       margin-bottom: 4px;
     }
+    /* Stats legend */
+    #stats-legend {
+      overflow: hidden;
+      transition: max-height 0.28s ease, opacity 0.22s ease;
+      max-height: 0;
+      opacity: 0;
+    }
+    #stats-legend.open {
+      max-height: 300px;
+      opacity: 1;
+    }
+    .stats-legend-grid {
+      display: grid;
+      grid-template-columns: auto 1fr auto 1fr;
+      gap: 4px 16px;
+      font-size: 0.8rem;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .stats-legend-abbr {
+      color: var(--text-muted);
+      font-weight: 700;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+
     .stats-team-label {
       font-size: 0.72rem;
       font-weight: 700;
@@ -1608,6 +1683,14 @@
         </div>
       </div>
 
+      <!-- RECENT (past games) section -->
+      <div class="section-heading" id="recent-section-heading" style="display:none">
+        📼 RECENT
+      </div>
+
+      <div id="past-games-grid" class="games-grid" role="list" aria-label="Past games">
+      </div>
+
     </section>
 
     <!-- ============================================================
@@ -1638,8 +1721,34 @@
 
       <!-- Game stats — populated by renderGameStats() -->
       <div class="glass-card" id="game-stats-card">
-        <div class="section-heading" style="font-size:1.2rem; margin-bottom:16px">
-          📊 Game Stats
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div class="section-heading" style="font-size:1.2rem;margin-bottom:0">
+            📊 Game Stats
+          </div>
+          <button id="stats-legend-toggle" class="btn btn-ghost btn-sm"
+                  aria-expanded="false" aria-controls="stats-legend"
+                  style="font-size:0.78rem;padding:4px 10px;">
+            ℹ️ Legend
+          </button>
+        </div>
+        <!-- Collapsible legend -->
+        <div id="stats-legend" style="margin-bottom:8px;">
+          <div class="stats-legend-grid">
+            <span class="stats-legend-abbr">DT</span>   <span>AFL Fantasy score</span>
+            <span class="stats-legend-abbr">SC</span>   <span>SuperCoach score</span>
+            <span class="stats-legend-abbr">Kk</span>   <span>Kicks</span>
+            <span class="stats-legend-abbr">Hb</span>   <span>Handballs</span>
+            <span class="stats-legend-abbr">Mk</span>   <span>Marks</span>
+            <span class="stats-legend-abbr">Tk</span>   <span>Tackles</span>
+            <span class="stats-legend-abbr">HO</span>   <span>Hit Outs</span>
+            <span class="stats-legend-abbr">FK</span>   <span>Free Kicks (net)</span>
+            <span class="stats-legend-abbr">G.B</span>  <span>Goals.Behinds</span>
+            <span class="stats-legend-abbr">MG</span>   <span>Metres Gained</span>
+            <span class="stats-legend-abbr">CP</span>   <span>Contested Possessions</span>
+            <span class="stats-legend-abbr">CL</span>   <span>Clearances</span>
+            <span class="stats-legend-abbr">🎯%</span>  <span>Disposal efficiency</span>
+            <span class="stats-legend-abbr">⏱️%</span>  <span>Time on ground</span>
+          </div>
         </div>
         <div id="game-stats-content" class="text-muted text-sm">
           Select a game to see detailed stats.
@@ -2152,63 +2261,64 @@ const MOCK_DATA = {
         { id: 'coll23', jersey: 42, name: 'C. Holman',       pos: 'FWD', score: 12,  scoreDT: 12,  scoreSC: 10  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 8, cp: 1, cl: 0, effPct: 65, togPct: 50 }  },
       ]
     },
+  ],
+  pastGames: [
     {
       id: 'g002',
-      teamA: { name: 'Carlton', abbr: 'CARL', color: '#003087', score: 45, goals: 6, behinds: 9 },
-      teamB: { name: 'Hawthorn', abbr: 'HAW', color: '#4d2004', score: 55, goals: 7, behinds: 14 },
-      quarter: 2,
-      timeRemaining: '14:21',
+      teamA: { name: 'Carlton', abbr: 'CARL', color: '#003087', score: 92, goals: 14, behinds: 8 },
+      teamB: { name: 'Hawthorn', abbr: 'HAW', color: '#4d2004', score: 72, goals: 11, behinds: 6 },
+      quarter: 4,
       venue: 'Marvel Stadium',
-      status: 'live',
+      status: 'final',
       players: [
-        // ── Carlton (teamA) — 23-man match day squad ──────────────────────
-        { id: 'carl01', jersey: 9,  name: 'P. Cripps',      pos: 'MID', score: 95,  scoreDT: 95,  scoreSC: 101 , stats: { kk: 16, hb: 12, mk: 7, tk: 5, ho: 0, fk: 2, gb: '1.1', mg: 50, cp: 8, cl: 3, effPct: 87, togPct: 78 }  },
-        { id: 'carl02', jersey: 1,  name: 'H. McKay',        pos: 'FWD', score: 41,  scoreDT: 41,  scoreSC: 37  , stats: { kk: 8, hb: 4, mk: 4, tk: 2, ho: 0, fk: 1, gb: '2.0', mg: 30, cp: 3, cl: 0, effPct: 80, togPct: 68 }  },
-        { id: 'carl03', jersey: 8,  name: 'S. Walsh',        pos: 'MID', score: 67,  scoreDT: 67,  scoreSC: 71  , stats: { kk: 12, hb: 10, mk: 5, tk: 4, ho: 0, fk: 1, gb: '0.1', mg: 38, cp: 7, cl: 3, effPct: 85, togPct: 74 }  },
-        { id: 'carl04', jersey: 7,  name: 'M. Kennedy',      pos: 'MID', score: 54,  scoreDT: 54,  scoreSC: 58  , stats: { kk: 10, hb: 8, mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 32, cp: 6, cl: 2, effPct: 83, togPct: 72 }  },
-        { id: 'carl05', jersey: 22, name: 'Z. Williams',     pos: 'DEF', score: 48,  scoreDT: 48,  scoreSC: 52  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 1, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 }  },
-        { id: 'carl06', jersey: 33, name: 'C. Hollands',     pos: 'MID', score: 39,  scoreDT: 39,  scoreSC: 42  , stats: { kk: 7, hb: 6, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.1', mg: 24, cp: 5, cl: 2, effPct: 80, togPct: 68 }  },
-        { id: 'carl07', jersey: 11, name: 'J. Motlop',       pos: 'FWD', score: 31,  scoreDT: 31,  scoreSC: 28  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 18, cp: 3, cl: 1, effPct: 75, togPct: 62 }  },
-        { id: 'carl08', jersey: 5,  name: 'M. Owies',        pos: 'FWD', score: 26,  scoreDT: 26,  scoreSC: 23  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 14, cp: 3, cl: 0, effPct: 72, togPct: 60 }  },
-        { id: 'carl09', jersey: 18, name: 'B. Silvagni',     pos: 'DEF', score: 44,  scoreDT: 44,  scoreSC: 47  , stats: { kk: 6, hb: 5, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 77, togPct: 66 }  },
-        { id: 'carl10', jersey: 2,  name: 'L. Young',        pos: 'DEF', score: 38,  scoreDT: 38,  scoreSC: 35  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 4, cl: 1, effPct: 73, togPct: 62 }  },
-        { id: 'carl11', jersey: 14, name: 'A. Cincotta',     pos: 'DEF', score: 29,  scoreDT: 29,  scoreSC: 26  , stats: { kk: 5, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 14, cp: 3, cl: 1, effPct: 72, togPct: 60 }  },
-        { id: 'carl12', jersey: 32, name: 'T. De Koning',    pos: 'RUC', score: 71,  scoreDT: 71,  scoreSC: 76  , stats: { kk: 5, hb: 3, mk: 2, tk: 2, ho: 14, fk: 0, gb: '0.0', mg: 16, cp: 5, cl: 2, effPct: 80, togPct: 62 }  },
-        { id: 'carl13', jersey: 25, name: 'D. Cuningham',    pos: 'FWD', score: 33,  scoreDT: 33,  scoreSC: 30  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 16, cp: 3, cl: 1, effPct: 75, togPct: 62 }  },
-        { id: 'carl14', jersey: 17, name: 'J. Newnes',       pos: 'MID', score: 45,  scoreDT: 45,  scoreSC: 48  , stats: { kk: 8, hb: 6, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.1', mg: 26, cp: 5, cl: 2, effPct: 80, togPct: 68 }  },
-        { id: 'carl15', jersey: 26, name: 'C. Marchbank',    pos: 'DEF', score: 36,  scoreDT: 36,  scoreSC: 33  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
-        { id: 'carl16', jersey: 19, name: 'N. Newman',       pos: 'DEF', score: 52,  scoreDT: 52,  scoreSC: 55  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 1, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 78, togPct: 66 }  },
-        { id: 'carl17', jersey: 4,  name: 'J. Durdin',       pos: 'FWD', score: 22,  scoreDT: 22,  scoreSC: 19  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 14, cp: 2, cl: 0, effPct: 72, togPct: 58 }  },
-        { id: 'carl18', jersey: 21, name: 'A. Saad',         pos: 'DEF', score: 41,  scoreDT: 41,  scoreSC: 38  , stats: { kk: 6, hb: 5, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 77, togPct: 64 }  },
-        { id: 'carl19', jersey: 6,  name: 'M. Cottrell',     pos: 'MID', score: 28,  scoreDT: 28,  scoreSC: 25  , stats: { kk: 6, hb: 5, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 78, togPct: 65 }  },
-        { id: 'carl20', jersey: 23, name: 'E. Curnow',       pos: 'FWD', score: 58,  scoreDT: 58,  scoreSC: 62  , stats: { kk: 8, hb: 5, mk: 3, tk: 2, ho: 0, fk: 1, gb: '1.1', mg: 26, cp: 4, cl: 1, effPct: 80, togPct: 68 }  },
-        { id: 'carl21', jersey: 15, name: 'L. Parks',        pos: 'FWD', score: 19,  scoreDT: 19,  scoreSC: 17  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 58 }  },
-        { id: 'carl22', jersey: 34, name: 'B. Acres',        pos: 'MID', score: 32,  scoreDT: 32,  scoreSC: 29  , stats: { kk: 6, hb: 5, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 18, cp: 4, cl: 1, effPct: 76, togPct: 64 }  },
-        { id: 'carl23', jersey: 44, name: 'T. Williamson',   pos: 'FWD', score: 15,  scoreDT: 15,  scoreSC: 13  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 8, cp: 1, cl: 0, effPct: 65, togPct: 50 }  },
-        // ── Hawthorn (teamB) — 23-man match day squad ─────────────────────
-        { id: 'haw01',  jersey: 8,  name: 'J. Sicily',       pos: 'DEF', score: 74,  scoreDT: 74,  scoreSC: 79  , stats: { kk: 10, hb: 6, mk: 5, tk: 4, ho: 0, fk: 1, gb: '0.1', mg: 34, cp: 6, cl: 2, effPct: 82, togPct: 72 }  },
-        { id: 'haw02',  jersey: 12, name: 'J. Newcombe',     pos: 'MID', score: 83,  scoreDT: 83,  scoreSC: 88  , stats: { kk: 14, hb: 11, mk: 5, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 42, cp: 7, cl: 3, effPct: 85, togPct: 76 }  },
-        { id: 'haw03',  jersey: 15, name: 'D. Moore (HB)',   pos: 'FWD', score: 52,  scoreDT: 52,  scoreSC: 48  , stats: { kk: 8, hb: 5, mk: 3, tk: 2, ho: 0, fk: 1, gb: '1.1', mg: 26, cp: 4, cl: 1, effPct: 80, togPct: 68 }  },
-        { id: 'haw04',  jersey: 26, name: 'M. Lewis',        pos: 'FWD', score: 47,  scoreDT: 47,  scoreSC: 44  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '1.1', mg: 24, cp: 4, cl: 1, effPct: 78, togPct: 66 }  },
-        { id: 'haw05',  jersey: 33, name: 'F. Maginness',    pos: 'MID', score: 61,  scoreDT: 61,  scoreSC: 65  , stats: { kk: 10, hb: 8, mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 32, cp: 6, cl: 2, effPct: 83, togPct: 72 }  },
-        { id: 'haw06',  jersey: 7,  name: 'J. Gunston',      pos: 'FWD', score: 38,  scoreDT: 38,  scoreSC: 35  , stats: { kk: 6, hb: 4, mk: 3, tk: 2, ho: 0, fk: 1, gb: '1.0', mg: 22, cp: 3, cl: 1, effPct: 78, togPct: 65 }  },
-        { id: 'haw07',  jersey: 5,  name: 'T. Mitchell',     pos: 'MID', score: 92,  scoreDT: 92,  scoreSC: 98  , stats: { kk: 15, hb: 12, mk: 6, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 46, cp: 8, cl: 3, effPct: 87, togPct: 78 }  },
-        { id: 'haw08',  jersey: 11, name: 'L. Shiels',       pos: 'MID', score: 44,  scoreDT: 44,  scoreSC: 47  , stats: { kk: 8, hb: 7, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 2, effPct: 80, togPct: 68 }  },
-        { id: 'haw09',  jersey: 9,  name: 'J. Ward',         pos: 'DEF', score: 35,  scoreDT: 35,  scoreSC: 32  , stats: { kk: 6, hb: 4, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 76, togPct: 64 }  },
-        { id: 'haw10',  jersey: 23, name: 'C. Macdonald',    pos: 'DEF', score: 29,  scoreDT: 29,  scoreSC: 26  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
-        { id: 'haw11',  jersey: 32, name: 'L. Breust',       pos: 'FWD', score: 43,  scoreDT: 43,  scoreSC: 40  , stats: { kk: 6, hb: 4, mk: 3, tk: 2, ho: 0, fk: 0, gb: '1.1', mg: 20, cp: 3, cl: 1, effPct: 77, togPct: 64 }  },
-        { id: 'haw12',  jersey: 3,  name: 'J. Worpel',       pos: 'MID', score: 67,  scoreDT: 67,  scoreSC: 71  , stats: { kk: 10, hb: 8, mk: 4, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 32, cp: 6, cl: 2, effPct: 83, togPct: 72 }  },
-        { id: 'haw13',  jersey: 6,  name: 'W. Day',          pos: 'DEF', score: 55,  scoreDT: 55,  scoreSC: 58  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 66 }  },
-        { id: 'haw14',  jersey: 18, name: 'T. Hardwick',     pos: 'DEF', score: 31,  scoreDT: 31,  scoreSC: 28  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
-        { id: 'haw15',  jersey: 22, name: 'C. Jiath',        pos: 'DEF', score: 48,  scoreDT: 48,  scoreSC: 51  , stats: { kk: 6, hb: 5, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 77, togPct: 64 }  },
-        { id: 'haw16',  jersey: 4,  name: 'I. Quaynor (HB)', pos: 'DEF', score: 22,  scoreDT: 22,  scoreSC: 19  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 58 }  },
-        { id: 'haw17',  jersey: 37, name: 'S. Frost',        pos: 'DEF', score: 27,  scoreDT: 27,  scoreSC: 24  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 58 }  },
-        { id: 'haw18',  jersey: 44, name: 'J. Impey',        pos: 'DEF', score: 39,  scoreDT: 39,  scoreSC: 36  , stats: { kk: 6, hb: 4, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 18, cp: 4, cl: 1, effPct: 77, togPct: 64 }  },
-        { id: 'haw19',  jersey: 16, name: 'D. Howe',         pos: 'DEF', score: 33,  scoreDT: 33,  scoreSC: 30  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
-        { id: 'haw20',  jersey: 19, name: 'C. Nash',         pos: 'RUC', score: 58,  scoreDT: 58,  scoreSC: 63  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 16, fk: 0, gb: '0.0', mg: 14, cp: 5, cl: 2, effPct: 80, togPct: 60 }  },
-        { id: 'haw21',  jersey: 28, name: 'K. Hartigan',     pos: 'DEF', score: 21,  scoreDT: 21,  scoreSC: 18  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 58 }  },
-        { id: 'haw22',  jersey: 21, name: 'B. McEvoy',       pos: 'RUC', score: 49,  scoreDT: 49,  scoreSC: 53  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 12, fk: 0, gb: '0.0', mg: 12, cp: 4, cl: 2, effPct: 78, togPct: 60 }  },
-        { id: 'haw23',  jersey: 34, name: 'S. Butler',       pos: 'FWD', score: 18,  scoreDT: 18,  scoreSC: 15  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 8, cp: 1, cl: 0, effPct: 65, togPct: 50 }  },
+        // ── Carlton (teamA) ─────────────────────────────────────────────────
+        { id: 'carl01', jersey: 9,  name: 'P. Cripps',     pos: 'MID', score: 118, scoreDT: 118, scoreSC: 125, stats: { kk: 22, hb: 14, mk: 9, tk: 7, ho: 0, fk: 2, gb: '2.1', mg: 65, cp: 10, cl: 4, effPct: 89, togPct: 84 } },
+        { id: 'carl02', jersey: 1,  name: 'H. McKay',      pos: 'FWD', score: 67,  scoreDT: 67,  scoreSC: 61,  stats: { kk: 11, hb: 4,  mk: 6, tk: 2, ho: 0, fk: 2, gb: '5.1', mg: 42, cp: 4, cl: 0, effPct: 83, togPct: 72 } },
+        { id: 'carl03', jersey: 8,  name: 'S. Walsh',      pos: 'MID', score: 98,  scoreDT: 98,  scoreSC: 104, stats: { kk: 18, hb: 14, mk: 7, tk: 6, ho: 0, fk: 1, gb: '0.2', mg: 54, cp: 9, cl: 4, effPct: 87, togPct: 80 } },
+        { id: 'carl04', jersey: 7,  name: 'M. Kennedy',    pos: 'MID', score: 76,  scoreDT: 76,  scoreSC: 81,  stats: { kk: 14, hb: 10, mk: 5, tk: 5, ho: 0, fk: 1, gb: '1.1', mg: 44, cp: 8, cl: 3, effPct: 85, togPct: 78 } },
+        { id: 'carl05', jersey: 22, name: 'Z. Williams',   pos: 'DEF', score: 61,  scoreDT: 61,  scoreSC: 65,  stats: { kk: 10, hb: 7,  mk: 4, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 32, cp: 6, cl: 1, effPct: 80, togPct: 72 } },
+        { id: 'carl06', jersey: 33, name: 'C. Hollands',   pos: 'MID', score: 52,  scoreDT: 52,  scoreSC: 55,  stats: { kk: 9,  hb: 7,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 30, cp: 6, cl: 2, effPct: 82, togPct: 72 } },
+        { id: 'carl07', jersey: 11, name: 'J. Motlop',     pos: 'FWD', score: 44,  scoreDT: 44,  scoreSC: 40,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '2.0', mg: 26, cp: 4, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'carl08', jersey: 5,  name: 'M. Owies',      pos: 'FWD', score: 38,  scoreDT: 38,  scoreSC: 34,  stats: { kk: 6,  hb: 4,  mk: 3, tk: 2, ho: 0, fk: 0, gb: '2.0', mg: 20, cp: 3, cl: 0, effPct: 75, togPct: 65 } },
+        { id: 'carl09', jersey: 18, name: 'B. Silvagni',   pos: 'DEF', score: 58,  scoreDT: 58,  scoreSC: 62,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 28, cp: 5, cl: 1, effPct: 80, togPct: 70 } },
+        { id: 'carl10', jersey: 2,  name: 'L. Young',      pos: 'DEF', score: 49,  scoreDT: 49,  scoreSC: 53,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 5, cl: 1, effPct: 77, togPct: 68 } },
+        { id: 'carl11', jersey: 14, name: 'A. Cincotta',   pos: 'DEF', score: 40,  scoreDT: 40,  scoreSC: 37,  stats: { kk: 7,  hb: 4,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 65 } },
+        { id: 'carl12', jersey: 32, name: 'T. De Koning',  pos: 'RUC', score: 88,  scoreDT: 88,  scoreSC: 95,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 4, ho: 22, fk: 0, gb: '0.1', mg: 22, cp: 8, cl: 4, effPct: 82, togPct: 75 } },
+        { id: 'carl13', jersey: 25, name: 'D. Cuningham',  pos: 'FWD', score: 45,  scoreDT: 45,  scoreSC: 41,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 2, ho: 0, fk: 0, gb: '2.1', mg: 22, cp: 3, cl: 0, effPct: 77, togPct: 67 } },
+        { id: 'carl14', jersey: 17, name: 'J. Newnes',     pos: 'MID', score: 60,  scoreDT: 60,  scoreSC: 64,  stats: { kk: 11, hb: 8,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 34, cp: 6, cl: 2, effPct: 82, togPct: 74 } },
+        { id: 'carl15', jersey: 26, name: 'C. Marchbank',  pos: 'DEF', score: 47,  scoreDT: 47,  scoreSC: 51,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 77, togPct: 68 } },
+        { id: 'carl16', jersey: 19, name: 'N. Newman',     pos: 'DEF', score: 66,  scoreDT: 66,  scoreSC: 70,  stats: { kk: 10, hb: 6,  mk: 4, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 30, cp: 5, cl: 1, effPct: 80, togPct: 72 } },
+        { id: 'carl17', jersey: 4,  name: 'J. Durdin',     pos: 'FWD', score: 33,  scoreDT: 33,  scoreSC: 29,  stats: { kk: 6,  hb: 4,  mk: 2, tk: 3, ho: 0, fk: 0, gb: '1.0', mg: 18, cp: 3, cl: 0, effPct: 74, togPct: 62 } },
+        { id: 'carl18', jersey: 21, name: 'A. Saad',       pos: 'DEF', score: 54,  scoreDT: 54,  scoreSC: 58,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 1, effPct: 79, togPct: 70 } },
+        { id: 'carl19', jersey: 6,  name: 'M. Cottrell',   pos: 'MID', score: 39,  scoreDT: 39,  scoreSC: 35,  stats: { kk: 7,  hb: 6,  mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 79, togPct: 68 } },
+        { id: 'carl20', jersey: 23, name: 'E. Curnow',     pos: 'FWD', score: 72,  scoreDT: 72,  scoreSC: 77,  stats: { kk: 11, hb: 6,  mk: 4, tk: 3, ho: 0, fk: 1, gb: '3.1', mg: 36, cp: 5, cl: 1, effPct: 83, togPct: 74 } },
+        { id: 'carl21', jersey: 15, name: 'L. Parks',      pos: 'FWD', score: 28,  scoreDT: 28,  scoreSC: 25,  stats: { kk: 5,  hb: 3,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.1', mg: 16, cp: 2, cl: 0, effPct: 73, togPct: 60 } },
+        { id: 'carl22', jersey: 34, name: 'B. Acres',      pos: 'MID', score: 43,  scoreDT: 43,  scoreSC: 39,  stats: { kk: 8,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'carl23', jersey: 44, name: 'T. Williamson', pos: 'FWD', score: 22,  scoreDT: 22,  scoreSC: 19,  stats: { kk: 4,  hb: 2,  mk: 2, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 10, cp: 1, cl: 0, effPct: 67, togPct: 55 } },
+        // ── Hawthorn (teamB) ────────────────────────────────────────────────
+        { id: 'haw01',  jersey: 8,  name: 'J. Sicily',     pos: 'DEF', score: 88,  scoreDT: 88,  scoreSC: 94,  stats: { kk: 14, hb: 7,  mk: 7, tk: 5, ho: 0, fk: 1, gb: '0.2', mg: 46, cp: 7, cl: 2, effPct: 84, togPct: 78 } },
+        { id: 'haw02',  jersey: 12, name: 'J. Newcombe',   pos: 'MID', score: 105, scoreDT: 105, scoreSC: 111, stats: { kk: 18, hb: 13, mk: 7, tk: 6, ho: 0, fk: 2, gb: '0.2', mg: 56, cp: 9, cl: 4, effPct: 87, togPct: 82 } },
+        { id: 'haw03',  jersey: 15, name: 'D. Moore (HB)', pos: 'FWD', score: 62,  scoreDT: 62,  scoreSC: 57,  stats: { kk: 10, hb: 6,  mk: 4, tk: 3, ho: 0, fk: 1, gb: '2.1', mg: 34, cp: 5, cl: 1, effPct: 82, togPct: 72 } },
+        { id: 'haw04',  jersey: 26, name: 'M. Lewis',      pos: 'FWD', score: 58,  scoreDT: 58,  scoreSC: 54,  stats: { kk: 9,  hb: 6,  mk: 4, tk: 3, ho: 0, fk: 0, gb: '2.1', mg: 30, cp: 5, cl: 1, effPct: 80, togPct: 70 } },
+        { id: 'haw05',  jersey: 33, name: 'F. Maginness',  pos: 'MID', score: 78,  scoreDT: 78,  scoreSC: 83,  stats: { kk: 13, hb: 10, mk: 5, tk: 5, ho: 0, fk: 0, gb: '0.2', mg: 42, cp: 8, cl: 3, effPct: 85, togPct: 78 } },
+        { id: 'haw06',  jersey: 7,  name: 'J. Gunston',    pos: 'FWD', score: 49,  scoreDT: 49,  scoreSC: 44,  stats: { kk: 8,  hb: 4,  mk: 4, tk: 2, ho: 0, fk: 1, gb: '2.0', mg: 28, cp: 4, cl: 0, effPct: 80, togPct: 68 } },
+        { id: 'haw07',  jersey: 5,  name: 'T. Mitchell',   pos: 'MID', score: 115, scoreDT: 115, scoreSC: 122, stats: { kk: 19, hb: 15, mk: 8, tk: 7, ho: 0, fk: 2, gb: '0.2', mg: 60, cp: 10, cl: 4, effPct: 89, togPct: 84 } },
+        { id: 'haw08',  jersey: 11, name: 'L. Shiels',     pos: 'MID', score: 56,  scoreDT: 56,  scoreSC: 60,  stats: { kk: 10, hb: 8,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 32, cp: 6, cl: 2, effPct: 82, togPct: 72 } },
+        { id: 'haw09',  jersey: 9,  name: 'J. Ward',       pos: 'DEF', score: 44,  scoreDT: 44,  scoreSC: 40,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'haw10',  jersey: 23, name: 'C. Macdonald',  pos: 'DEF', score: 37,  scoreDT: 37,  scoreSC: 33,  stats: { kk: 6,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 65 } },
+        { id: 'haw11',  jersey: 32, name: 'L. Breust',     pos: 'FWD', score: 52,  scoreDT: 52,  scoreSC: 48,  stats: { kk: 8,  hb: 5,  mk: 4, tk: 2, ho: 0, fk: 0, gb: '2.1', mg: 26, cp: 4, cl: 1, effPct: 79, togPct: 68 } },
+        { id: 'haw12',  jersey: 3,  name: 'J. Worpel',     pos: 'MID', score: 84,  scoreDT: 84,  scoreSC: 89,  stats: { kk: 13, hb: 10, mk: 5, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 42, cp: 7, cl: 3, effPct: 85, togPct: 76 } },
+        { id: 'haw13',  jersey: 6,  name: 'W. Day',        pos: 'DEF', score: 68,  scoreDT: 68,  scoreSC: 73,  stats: { kk: 10, hb: 7,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 30, cp: 6, cl: 2, effPct: 80, togPct: 74 } },
+        { id: 'haw14',  jersey: 18, name: 'T. Hardwick',   pos: 'DEF', score: 40,  scoreDT: 40,  scoreSC: 36,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 66 } },
+        { id: 'haw15',  jersey: 22, name: 'C. Jiath',      pos: 'DEF', score: 59,  scoreDT: 59,  scoreSC: 63,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 1, effPct: 79, togPct: 70 } },
+        { id: 'haw16',  jersey: 4,  name: 'I. Quaynor (HB)', pos: 'DEF', score: 30, scoreDT: 30, scoreSC: 27, stats: { kk: 5,  hb: 4,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 15, cp: 3, cl: 0, effPct: 73, togPct: 62 } },
+        { id: 'haw17',  jersey: 37, name: 'S. Frost',      pos: 'DEF', score: 34,  scoreDT: 34,  scoreSC: 30,  stats: { kk: 6,  hb: 4,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 0, effPct: 73, togPct: 62 } },
+        { id: 'haw18',  jersey: 44, name: 'J. Impey',      pos: 'DEF', score: 48,  scoreDT: 48,  scoreSC: 43,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'haw19',  jersey: 16, name: 'D. Howe',       pos: 'DEF', score: 41,  scoreDT: 41,  scoreSC: 37,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 76, togPct: 66 } },
+        { id: 'haw20',  jersey: 19, name: 'C. Nash',       pos: 'RUC', score: 72,  scoreDT: 72,  scoreSC: 78,  stats: { kk: 6,  hb: 4,  mk: 3, tk: 3, ho: 20, fk: 0, gb: '0.0', mg: 18, cp: 7, cl: 3, effPct: 82, togPct: 72 } },
+        { id: 'haw21',  jersey: 28, name: 'K. Hartigan',   pos: 'DEF', score: 27,  scoreDT: 27,  scoreSC: 24,  stats: { kk: 5,  hb: 3,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 14, cp: 2, cl: 0, effPct: 72, togPct: 60 } },
+        { id: 'haw22',  jersey: 21, name: 'B. McEvoy',     pos: 'RUC', score: 61,  scoreDT: 61,  scoreSC: 66,  stats: { kk: 5,  hb: 4,  mk: 3, tk: 3, ho: 15, fk: 0, gb: '0.0', mg: 16, cp: 5, cl: 2, effPct: 80, togPct: 70 } },
+        { id: 'haw23',  jersey: 34, name: 'S. Butler',     pos: 'FWD', score: 22,  scoreDT: 22,  scoreSC: 19,  stats: { kk: 4,  hb: 2,  mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 10, cp: 1, cl: 0, effPct: 67, togPct: 55 } },
       ]
     },
   ],
@@ -2248,13 +2358,14 @@ const MOCK_DATA = {
 const State = {
   isMockMode: false,
   activeView: 'watch',
-  activeUser: null,        // { email, name, settings, team, customTeams, opponentTeam }
+  activeUser: null,        // { email, name, settings, team, customTeams }
   // Legacy alias kept so downstream code using State.activeProfile still works
   get activeProfile() { return this.activeUser; },
   set activeProfile(v)  { this.activeUser = v; },
   currentGame: null,       // Game object from MOCK_DATA or live fetch
   liveGames: [],
   upcomingGames: [],
+  pastGames: [],
   customTeams: [],         // Array of { id, name, color, playerIds: [] }
   scoreboardMode: false,   // If true: show all players, no toasts
   overlayVisible: false,
@@ -2364,7 +2475,6 @@ function defaultSettings() {
     soundVolume:    60,
     pollInterval:   30,
     myTeamColour:   '#3b82f6', // default blue — user can change per-game
-    oppTeamColour:  '#ef4444', // default red  — user can change per-game
   };
 }
 
@@ -2391,7 +2501,6 @@ function loadOrCreateUser(email, displayName) {
     settings:     defaultSettings(),
     team:         [],
     customTeams:  [],
-    opponentTeam: [],
   };
   userLsSet(email, 'profile', user);
   return user;
@@ -2555,7 +2664,7 @@ function handleLogin() {
   closeLoginScreen();
   activateUser(user);
   if (user.team?.length) renderTeamTable(user.team);
-  renderWatchTab(State.liveGames, State.upcomingGames);
+  renderWatchTab(State.liveGames, State.upcomingGames, State.pastGames);
   startPolling();
   showView('watch');
 }
@@ -2690,15 +2799,19 @@ function renderGameCard(game) {
   card.setAttribute('role', 'listitem');
   card.setAttribute('aria-label', `${game.teamA.name} vs ${game.teamB.name}${isLive ? ' - Live' : ''}`);
 
-  const scoreA = isLive ? game.teamA.score : '';
-  const scoreB = isLive ? game.teamB.score : '';
-  const leaderA = isLive && game.teamA.score >= game.teamB.score ? 'leader' : '';
-  const leaderB = isLive && game.teamB.score > game.teamA.score  ? 'leader' : '';
+  const isFinal = game.status === 'final';
+  const showScores = isLive || isFinal;
+  const scoreA = showScores ? game.teamA.score : '';
+  const scoreB = showScores ? game.teamB.score : '';
+  const leaderA = showScores && game.teamA.score >= game.teamB.score ? 'leader' : '';
+  const leaderB = showScores && game.teamB.score > game.teamA.score  ? 'leader' : '';
 
   const statusHtml = isLive
     ? `<span class="live-badge">LIVE</span>
        <span class="game-quarter">Q${game.quarter} · ${game.timeRemaining}</span>`
-    : `<span class="upcoming-badge">${game.date}</span>`;
+    : isFinal
+      ? `<span class="final-badge">FINAL</span>`
+      : `<span class="upcoming-badge">${game.date}</span>`;
 
   card.innerHTML = `
     <div class="game-card-stripe" style="background:${game.teamA.color}"></div>
@@ -2707,16 +2820,17 @@ function renderGameCard(game) {
       <div class="game-teams">
         <div class="game-team-row">
           <span class="team-name">${escHtml(game.teamA.name)}</span>
-          ${isLive ? `<span class="team-score ${leaderA}">${scoreA}</span>` : ''}
+          ${showScores ? `<span class="team-score ${leaderA}">${scoreA}</span>` : ''}
         </div>
         <div class="game-team-row">
           <span class="team-name" style="color:var(--text-muted)">${escHtml(game.teamB.name)}</span>
-          ${isLive ? `<span class="team-score ${leaderB}">${scoreB}</span>` : ''}
+          ${showScores ? `<span class="team-score ${leaderB}">${scoreB}</span>` : ''}
         </div>
       </div>
       <div class="game-meta">
         <span>🏟 ${escHtml(game.venue)}</span>
-        ${!isLive ? `<span>🕐 ${escHtml(game.time)}</span>` : ''}
+        ${(!isLive && !isFinal && game.time) ? `<span>🕐 ${escHtml(game.time)}</span>` : ''}
+        ${isFinal ? `<span style="color:var(--accent-alert);font-size:0.72rem;font-weight:600;">${game.teamA.goals}.${game.teamA.behinds}.${game.teamA.score} def${game.teamB.score >= game.teamA.score ? 'd by' : ''} ${game.teamB.goals}.${game.teamB.behinds}.${game.teamB.score}</span>` : ''}
       </div>
     </div>
   `;
@@ -2729,7 +2843,7 @@ function renderGameCard(game) {
   return card;
 }
 
-function renderWatchTab(liveGames, upcomingGames) {
+function renderWatchTab(liveGames, upcomingGames, pastGames = []) {
   const liveRow = document.getElementById('live-games-row');
   const upcomingGrid = document.getElementById('upcoming-games-grid');
   const liveCountBadge = document.getElementById('live-count-badge');
@@ -2755,6 +2869,19 @@ function renderWatchTab(liveGames, upcomingGames) {
   } else {
     upcomingGames.forEach(g => upcomingGrid.appendChild(renderGameCard(g)));
   }
+
+  // Past (final) games
+  const pastGrid    = document.getElementById('past-games-grid');
+  const recentHead  = document.getElementById('recent-section-heading');
+  if (pastGrid) {
+    pastGrid.innerHTML = '';
+    if (pastGames && pastGames.length > 0) {
+      if (recentHead) recentHead.style.display = '';
+      pastGames.forEach(g => pastGrid.appendChild(renderGameCard(g)));
+    } else {
+      if (recentHead) recentHead.style.display = 'none';
+    }
+  }
 }
 
 /* ================================================================
@@ -2770,31 +2897,36 @@ function openGameDetail(game) {
   const overlayBtn   = document.getElementById('overlay-toggle-btn');
 
   if (game.status === 'live') {
-    // Guard: quarter and timeRemaining may be absent if the scraper couldn't
-    // read the JS-rendered matchcentre (FanFooty serves those dynamically).
-    const quarter  = game.quarter       || '—';
-    const timeRem  = game.timeRemaining || '';
-    const timeStr  = timeRem ? ` ${timeRem}` : '';
+    const quarter = game.quarter       || '—';
+    const timeRem = game.timeRemaining || '';
+    const timeStr = timeRem ? ` ${timeRem}` : '';
     liveScoreEl.textContent =
       `${game.teamA.score} – ${game.teamB.score}  |  Q${quarter}${timeStr}`;
-
-    // Pulsing LIVE badge — reuses the .live-badge class already in CSS
     statusBadge.innerHTML = `<span class="live-badge" aria-label="Game is live">LIVE</span>`;
-
     overlayBtn.style.display = 'flex';
+  } else if (game.status === 'final') {
+    // Show final scores in the header
+    const aScore = `${game.teamA.goals}.${game.teamA.behinds}.${game.teamA.score}`;
+    const bScore = `${game.teamB.goals}.${game.teamB.behinds}.${game.teamB.score}`;
+    const winner = game.teamA.score >= game.teamB.score ? game.teamA.name : game.teamB.name;
+    liveScoreEl.textContent = `${aScore}  –  ${bScore}`;
+    statusBadge.innerHTML =
+      `<span class="final-badge" aria-label="Game finished">FULL TIME</span>`;
+    overlayBtn.style.display = 'none';
   } else {
-    // Guard: upcoming games from the scraper may omit .time if FanFooty
-    // doesn't provide it for that fixture. Show em-dash rather than "undefined".
+    // Upcoming
     const date = game.date || '—';
     const time = game.time || '—';
     liveScoreEl.textContent = `${date} · ${time}`;
-
-    // Subdued UPCOMING label — reuses the .upcoming-badge class
     statusBadge.innerHTML =
       `<span class="upcoming-badge" aria-label="Upcoming game">UPCOMING</span>`;
-
     overlayBtn.style.display = 'none';
   }
+
+  // Hide action buttons for completed (final) games — stats only
+  const isFinalGame = game.status === 'final';
+  const actionDiv = document.querySelector('.game-detail-actions');
+  if (actionDiv) actionDiv.style.display = isFinalGame ? 'none' : '';
 
   // Reset sort to score descending each time a new game opens
   StatsSort.col = 'score';
@@ -2805,13 +2937,22 @@ function openGameDetail(game) {
 
 document.getElementById('game-detail-back').addEventListener('click', () => showView('watch'));
 
+// Stats legend toggle
+document.getElementById('stats-legend-toggle').addEventListener('click', () => {
+  const legend = document.getElementById('stats-legend');
+  const btn    = document.getElementById('stats-legend-toggle');
+  const isOpen = legend.classList.toggle('open');
+  btn.setAttribute('aria-expanded', String(isOpen));
+  btn.style.color = isOpen ? 'var(--accent-live)' : '';
+});
+
 // Begin Overlay
 document.getElementById('btn-begin-overlay').addEventListener('click', () => {
   if (!State.currentGame) return;
   const hasSelections = State.scoreboardMode ||
     State.customTeams.some(t => t.playerIds.length > 0);
   if (!hasSelections) {
-    showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0);
+    showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0, 'neutral');
     return;
   }
   activateOverlay();
@@ -2859,7 +3000,7 @@ function renderGameStats(game) {
   const container = document.getElementById('game-stats-content');
   if (!container) return;
 
-  if (!game || game.status !== 'live') {
+  if (!game || game.status === 'upcoming') {
     container.innerHTML = `<p class="text-muted text-sm" style="padding:8px 0;">
       ${game ? 'Wait for game to start to see detailed stats. Stats are populated from FanFooty live data.' : 'Select a game to see detailed stats.'}
     </p>`;
@@ -2911,7 +3052,7 @@ function renderGameStats(game) {
 
     const teamLabel = document.createElement('div');
     teamLabel.className = 'stats-team-label';
-    teamLabel.style.color = teamColor;
+    teamLabel.style.color = getReadableTextColour(teamColor);
     teamLabel.textContent = teamName;
 
     const wrap = document.createElement('div');
@@ -2963,10 +3104,8 @@ function renderGameStats(game) {
     return [teamLabel, wrap];
   }
 
-  const allPlayers = game.players || [];
-  const half = Math.ceil(allPlayers.length / 2);
-  const teamAPlayers = allPlayers.slice(0, half);
-  const teamBPlayers = allPlayers.slice(half);
+  const teamAPlayers = getPlayersForSide('teamA');
+  const teamBPlayers = getPlayersForSide('teamB');
 
   container.innerHTML = '';
   const [labelA, tableA] = buildTable(teamAPlayers, game.teamA.name, game.teamA.color);
@@ -2987,7 +3126,6 @@ function renderGameStats(game) {
 
    Three special IDs are reserved:
      'ct_myteam'  — "My Team" card (pre-populated from user's imported team)
-     'ct_opp'     — "Opp Team" card (pre-populated from opponent import)
      'ct_N'       — User-created custom teams (N = timestamp)
 
    The overlay expects the same { id, name, color, playerIds[] } shape —
@@ -3012,7 +3150,7 @@ document.getElementById('btn-scoreboard-mode').addEventListener('click', () => {
       State.scoreboardMode = true;
       State.customTeams = [];
       renderTeamCards();
-      showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0);
+      showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0, 'neutral');
     }
   );
 });
@@ -3029,14 +3167,14 @@ document.getElementById('btn-add-custom-team').addEventListener('click', () => {
   const customCount = State.customTeams.filter(t => t.id.startsWith('ct_')).length;
   const totalCount  = State.customTeams.length;
   if (totalCount >= 5) {
-    showToast('⚠️', 'Maximum reached', 'Remove a team to add another (max 5 total)', 0);
+    showToast('⚠️', 'Maximum reached', 'Remove a team to add another (max 5 total)', 0, 'neutral');
     return;
   }
   const idx = customCount + 1;
-  const colors = ['#a855f7','#f59e0b','#10b981','#f43f5e','#6366f1'];
+  const colors = ['#a855f7','#f59e0b','#ff6b35','#00d4ff','#ff1493'];
   State.customTeams.push({
     id:        `ct_${Date.now()}`,
-    name:      `Team ${idx + 2}`, // 1=My Team, 2=Opp, then 3, 4, 5
+    name:      `Team ${idx}`, // 1=My Team, then 2, 3, 4, 5
     color:     colors[customCount % colors.length],
     playerIds: [],
     readonly:  false,
@@ -3060,20 +3198,17 @@ document.getElementById('modal-picker-confirm').addEventListener('click', () => 
 /* ------------------------------------------------------------------ */
 
 /**
- * Ensure the reserved "My Team" and "Opp Team" cards exist in
- * State.customTeams, pre-populated from the user's data.
- * Preserves any existing custom teams created in this session.
+ * Ensure the reserved "My Team" card exists in State.customTeams,
+ * pre-populated with players from the user's imported team who
+ * appear in the current game. Preserves existing custom teams.
  */
 function ensureReservedCards() {
   if (!State.currentGame) return;
   const user = State.activeProfile;
   const s    = user?.settings || {};
 
-  // ── My Team card ──────────────────────────────────────────────────────────
-  const allGamePlayerIds = (State.currentGame.players || []).map(p => p.id);
   if (!State.customTeams.find(t => t.id === 'ct_myteam')) {
-    // Pre-select players from the user's imported team who appear in this game.
-    // Match by name (formatted) since jersey lookup may not have run yet.
+    // Match user's team players against the current game by formatted name
     const userTeamNames = new Set((user?.team || []).map(p => formatPlayerName(p.name)));
     const matchingIds   = (State.currentGame.players || [])
       .filter(p => userTeamNames.has(formatPlayerName(p.name)))
@@ -3086,33 +3221,6 @@ function ensureReservedCards() {
       playerIds: matchingIds,
       readonly:  false,
     });
-  }
-
-  // ── Opp Team card — only if opponent team is imported ─────────────────────
-  const oppTeam   = user?.opponentTeam || [];
-  const hasOpp    = oppTeam.length > 0;
-  const hasOppCard = !!State.customTeams.find(t => t.id === 'ct_opp');
-
-  if (hasOpp && !hasOppCard) {
-    const oppNames    = new Set(oppTeam.map(n => formatPlayerName(n)));
-    const oppMatchIds = (State.currentGame.players || [])
-      .filter(p => oppNames.has(formatPlayerName(p.name)))
-      .map(p => p.id);
-
-    // Insert after My Team card
-    const myIdx = State.customTeams.findIndex(t => t.id === 'ct_myteam');
-    State.customTeams.splice(myIdx + 1, 0, {
-      id:        'ct_opp',
-      name:      'Opp Team',
-      color:     s.oppTeamColour || '#ef4444',
-      playerIds: oppMatchIds,
-      readonly:  false,
-    });
-  }
-
-  // Remove opp card if opponent was cleared
-  if (!hasOpp) {
-    State.customTeams = State.customTeams.filter(t => t.id !== 'ct_opp');
   }
 }
 
@@ -3162,26 +3270,74 @@ function buildTeamCard(team) {
   header.style.borderLeftColor = team.color;
 
   // Colour swatch row — 8 preset colours, currently selected has white ring
-  const SWATCH_COLOURS = ['#3b82f6', '#ef4444', '#00ff88', '#f59e0b', '#a855f7', '#f43f5e', '#10b981', '#6366f1'];
-  const swatchWrap = document.createElement('div');
-  swatchWrap.className = 'colour-swatches';
-  swatchWrap.setAttribute('aria-label', 'Team colour');
+  const SWATCH_COLOURS = ['#3b82f6','#ef4444','#00ff88','#f59e0b','#a855f7','#ff6b35','#00d4ff','#ff1493'];
+  // Colour picker: single circle button that opens a swatch popover
+  const cpWrap = document.createElement('div');
+  cpWrap.className = 'colour-picker-wrap';
+
+  const cpBtn = document.createElement('button');
+  cpBtn.className = 'colour-picker-btn';
+  cpBtn.style.background = team.color;
+  cpBtn.title = 'Change colour';
+  cpBtn.setAttribute('aria-label', 'Change team colour');
+  cpBtn.type = 'button';
+
+  // Popover is appended to <body> so it's never clipped by card/header overflow
+  const cpPopover = document.createElement('div');
+  cpPopover.className = 'colour-popover';
+  let popoverOpen = false;
+
+  const closePopover = (e) => {
+    if (!popoverOpen) return;
+    popoverOpen = false;
+    document.body.removeChild(cpPopover);
+    document.removeEventListener('click', outsideClickHandler, true);
+  };
+
+  const outsideClickHandler = (e) => {
+    if (!cpPopover.contains(e.target) && e.target !== cpBtn) {
+      closePopover();
+    }
+  };
+
+  const openPopover = () => {
+    if (popoverOpen) { closePopover(); return; }
+    popoverOpen = true;
+    document.body.appendChild(cpPopover);
+
+    // Position below the button, flip upward if it would overflow viewport
+    const btnRect = cpBtn.getBoundingClientRect();
+    const PAD = 6;
+    let top  = btnRect.bottom + PAD + window.scrollY;
+    let left = btnRect.left + btnRect.width / 2 - (cpPopover.offsetWidth / 2 || 52) + window.scrollX;
+
+    // Clamp horizontal so it doesn't go off-screen
+    const popW = cpPopover.offsetWidth || 108;
+    left = Math.max(8, Math.min(left, window.innerWidth - popW - 8));
+
+    // Flip upward if too close to bottom
+    const popH = cpPopover.offsetHeight || 76;
+    if (btnRect.bottom + PAD + popH > window.innerHeight) {
+      top = btnRect.top - PAD - popH + window.scrollY;
+    }
+
+    cpPopover.style.top  = top + 'px';
+    cpPopover.style.left = left + 'px';
+
+    // Defer outside-click listener so it doesn't fire on the same click that opened
+    setTimeout(() => document.addEventListener('click', outsideClickHandler, true), 0);
+  };
 
   const applyColour = (colour) => {
     team.color = colour;
+    cpBtn.style.background       = colour;
     header.style.borderLeftColor = colour;
-    nameEl.style.color = colour;
-    // Update active state on all swatches
-    swatchWrap.querySelectorAll('.colour-swatch').forEach(s => {
+    nameEl.style.color = getReadableTextColour(colour);
+    cpPopover.querySelectorAll('.colour-swatch').forEach(s => {
       s.classList.toggle('active', s.dataset.colour === colour);
     });
-    // Persist for reserved cards
     if (team.id === 'ct_myteam' && State.activeProfile) {
       State.activeProfile.settings.myTeamColour = colour;
-      saveCurrentProfile();
-    }
-    if (team.id === 'ct_opp' && State.activeProfile) {
-      State.activeProfile.settings.oppTeamColour = colour;
       saveCurrentProfile();
     }
   };
@@ -3193,11 +3349,25 @@ function buildTeamCard(team) {
     sw.style.background = colour;
     sw.title = colour;
     if (colour.toLowerCase() === team.color.toLowerCase()) sw.classList.add('active');
-    sw.addEventListener('click', e => { e.stopPropagation(); applyColour(colour); });
-    sw.addEventListener('keydown', e => { if (e.key === 'Enter') applyColour(colour); });
+    sw.addEventListener('click', e => {
+      e.stopPropagation();
+      applyColour(colour);
+      closePopover();
+    });
     sw.tabIndex = 0;
-    swatchWrap.appendChild(sw);
+    sw.addEventListener('keydown', e => { if (e.key === 'Enter') { applyColour(colour); closePopover(); } });
+    cpPopover.appendChild(sw);
   });
+
+  cpBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    openPopover();
+  });
+
+  cpWrap.appendChild(cpBtn);
+  // Note: cpPopover is NOT appended to cpWrap — it goes to body on open
+
+  const swatchWrap = cpWrap; // alias for the header.appendChild call below
 
   // Team name (editable input)
   const nameWrap = document.createElement('div');
@@ -3205,7 +3375,7 @@ function buildTeamCard(team) {
   const nameEl = document.createElement('input');
   nameEl.type  = 'text';
   nameEl.value = team.name;
-  nameEl.style.color = team.color;
+  nameEl.style.color = getReadableTextColour(team.color);
   nameEl.setAttribute('aria-label', 'Team name');
   nameEl.addEventListener('input', e => { team.name = e.target.value; });
   nameWrap.appendChild(nameEl);
@@ -3219,7 +3389,7 @@ function buildTeamCard(team) {
   const headerRight = document.createElement('div');
   headerRight.style.cssText = 'display:flex;gap:6px;align-items:center;flex-shrink:0;';
   headerRight.appendChild(countBadge);
-  if (team.id !== 'ct_myteam' && team.id !== 'ct_opp') {
+  if (team.id !== 'ct_myteam') {
     const delBtn = document.createElement('button');
     delBtn.className = 'btn btn-ghost btn-sm';
     delBtn.style.cssText = 'padding:3px 8px;font-size:0.7rem;color:var(--text-muted);';
@@ -3288,84 +3458,10 @@ function buildTeamCard(team) {
   addBtn.addEventListener('click', () => openPlayerPicker(team));
   footer.appendChild(addBtn);
 
-  // Opp Team: also show import opponent option
-  if (team.id === 'ct_opp') {
-    const importBtn = document.createElement('button');
-    importBtn.className = 'btn btn-ghost btn-sm';
-    importBtn.textContent = '📥 Import Opponent';
-    importBtn.addEventListener('click', () => {
-      const panel = document.getElementById('opp-import-panel');
-      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-    });
-    footer.appendChild(importBtn);
-  }
-
   card.appendChild(footer);
-
-  // Opponent import sub-panel (only rendered under Opp Team card)
-  if (team.id === 'ct_opp') {
-    const oppPanel = buildOppImportPanel(team);
-    card.appendChild(oppPanel);
-  }
-
   return card;
 }
 
-/**
- * Build the opponent import panel for the Opp Team card.
- * Mirrors the Team tab import UI (URL + paste + screenshot).
- */
-function buildOppImportPanel(team) {
-  const panel = document.createElement('div');
-  panel.id = 'opp-import-panel';
-  panel.style.display = 'none';
-  panel.innerHTML = `
-    <div style="padding:16px;border-top:1px solid var(--border);">
-      <div class="form-group" style="margin-bottom:12px;">
-        <label for="opp-import-text" style="margin-bottom:4px;display:block;">Paste opponent player names (one per line)</label>
-        <textarea id="opp-import-text" rows="5"
-          placeholder="e.g.&#10;P. Dangerfield&#10;M. Bontempelli&#10;L. Neale"
-          style="width:100%;"></textarea>
-      </div>
-      <div class="flex gap-8" style="flex-wrap:wrap;">
-        <button class="btn btn-primary btn-sm" id="btn-opp-import-confirm">Import</button>
-        <button class="btn btn-ghost btn-sm" id="btn-opp-import-cancel">Cancel</button>
-      </div>
-    </div>
-  `;
-
-  // Wire up after appending (IDs are unique per render)
-  setTimeout(() => {
-    const confirmBtn = document.getElementById('btn-opp-import-confirm');
-    const cancelBtn  = document.getElementById('btn-opp-import-cancel');
-    const textArea   = document.getElementById('opp-import-text');
-    if (!confirmBtn || !textArea) return;
-
-    cancelBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
-    confirmBtn.addEventListener('click', () => {
-      const names = textArea.value.split('\n').map(s => s.trim()).filter(Boolean);
-      if (!names.length) return;
-
-      if (State.activeProfile) {
-        State.activeProfile.opponentTeam = names;
-        saveCurrentProfile();
-      }
-
-      // Match names against game players
-      const nameSet = new Set(names.map(n => formatPlayerName(n)));
-      const matchIds = (State.currentGame?.players || [])
-        .filter(p => nameSet.has(formatPlayerName(p.name)))
-        .map(p => p.id);
-
-      team.playerIds = matchIds;
-      panel.style.display = 'none';
-      renderTeamCards();
-      showToast('📋', 'Opponent imported', `${matchIds.length} players matched in this game`, 0);
-    });
-  }, 0);
-
-  return panel;
-}
 
 /**
  * Open the player picker modal for a given team card.
@@ -3398,7 +3494,7 @@ function openPlayerPicker(team) {
 
     const title = document.createElement('span');
     title.className = 'pick-panel-title';
-    title.style.color = afl.color;
+    title.style.color = getReadableTextColour(afl.color);
     title.textContent = afl.name;
 
     const countBadge = document.createElement('span');
@@ -3633,8 +3729,20 @@ function renderOverlayTables() {
   const playerScore = p => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
 
   const teams = State.scoreboardMode
-    ? [{ id: 'all', name: 'All Players', color: 'var(--accent-blue)',
-         playerIds: State.currentGame.players.map(p => p.id) }]
+    ? [
+        {
+          id:        'scoreboard_teamA',
+          name:      State.currentGame.teamA.name,
+          color:     State.currentGame.teamA.color,
+          playerIds: getPlayersForSide('teamA').sort((a,b) => (a.jersey||99)-(b.jersey||99)).map(p => p.id),
+        },
+        {
+          id:        'scoreboard_teamB',
+          name:      State.currentGame.teamB.name,
+          color:     State.currentGame.teamB.color,
+          playerIds: getPlayersForSide('teamB').sort((a,b) => (a.jersey||99)-(b.jersey||99)).map(p => p.id),
+        },
+      ]
     : State.customTeams;
 
   if (teams.length === 0) {
@@ -3661,8 +3769,9 @@ function renderOverlayTables() {
       </tr>
     `).join('');
 
+    const overlayNameColour = getReadableTextColour(team.color);
     tableEl.innerHTML = `
-      <div class="overlay-team-name" style="border-left-color:${team.color}">
+      <div class="overlay-team-name" style="border-left-color:${team.color};color:${overlayNameColour}">
         ${escHtml(team.name)}
         <span style="color:var(--text-muted);font-size:0.7rem;margin-left:8px;">
           ${players.reduce((s, p) => s + playerScore(p), 0)} pts
@@ -3771,9 +3880,10 @@ function updateVolumeDisplay(val) {
  * @param {string} icon       - Emoji icon
  * @param {string} player     - Player name (or heading)
  * @param {string} action     - Action description
- * @param {number} points     - Points earned (0 = no points display)
+ * @param {number} points     - Points value (0 = no points display)
+ * @param {string} [type]     - 'positive' (default, green border) | 'negative' (red border) | 'neutral' (amber border)
  */
-function showToast(icon, player, action, points) {
+function showToast(icon, player, action, points, type = 'positive') {
   // Check if toasts are enabled (and not in scoreboard mode for scoring events)
   if (State.activeProfile) {
     const toastsOn = State.activeProfile.settings.toastsEnabled;
@@ -3783,7 +3893,8 @@ function showToast(icon, player, action, points) {
 
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
-  toast.className = 'toast';
+  const typeClass = type === 'negative' ? ' negative' : type === 'neutral' ? ' neutral' : '';
+  toast.className = `toast${typeClass}`;
   toast.setAttribute('role', 'alert');
 
   const pointsHtml = points !== 0
@@ -3871,13 +3982,21 @@ function simulateMockData() {
         const scoringSystem = State.activeProfile?.settings.scoringSystem || 'afl_fantasy';
         const pts = scoringSystem === 'supercoach' ? SUPERCOACH_POINTS : AFL_FANTASY_POINTS;
         const actions = [
-          { key: 'goal',    label: 'Goal',    pts: pts.goal    },
-          { key: 'mark',    label: 'Mark',    pts: pts.mark    },
-          { key: 'tackle',  label: 'Tackle',  pts: pts.tackle  },
-          { key: 'kick',    label: 'Kick',    pts: pts.kick    },
-          { key: 'handball',label: 'Handball',pts: pts.handball},
+          { key: 'goal',         label: 'Goal',             pts: pts.goal,         type: 'positive' },
+          { key: 'mark',         label: 'Mark',             pts: pts.mark,         type: 'positive' },
+          { key: 'tackle',       label: 'Tackle',           pts: pts.tackle,       type: 'positive' },
+          { key: 'kick',         label: 'Kick',             pts: pts.kick,         type: 'positive' },
+          { key: 'handball',     label: 'Handball',         pts: pts.handball,     type: 'positive' },
+          { key: 'hb_clanger',   label: 'Handball Clanger', pts: pts.hb_clanger,   type: 'negative' },
+          { key: 'kick_clanger', label: 'Kick Clanger',     pts: pts.kick_clanger, type: 'negative' },
+          { key: 'free_against', label: 'Free Against',     pts: pts.free_against, type: 'negative' },
         ];
-        const action = actions[Math.floor(Math.random() * actions.length)];
+        // Weight: positive actions more frequent than negative (5:3 ratio is natural)
+        // Negative actions have a lower individual probability — reroll if negative
+        let action = actions[Math.floor(Math.random() * actions.length)];
+        if (action.type === 'negative' && Math.random() < 0.4) {
+          action = actions[Math.floor(Math.random() * 5)]; // pick a positive instead
+        }
         const delta = Math.round(action.pts);
         p.score   = (p.score   || 0) + delta;
         p.scoreDT = (p.scoreDT || 0) + Math.round(AFL_FANTASY_POINTS[action.key] || delta);
@@ -3890,12 +4009,13 @@ function simulateMockData() {
           const toastDelta = isSC
             ? Math.round(SUPERCOACH_POINTS[action.key] || delta)
             : Math.round(AFL_FANTASY_POINTS[action.key] || delta);
-          showToast('⚡', formatPlayerName(p.name), action.label, toastDelta);
+          const icon = action.type === 'negative' ? '💀' : '⚡';
+          showToast(icon, formatPlayerName(p.name), action.label, toastDelta, action.type);
         }
       }
     });
   });
-  return { liveGames: data.liveGames, upcomingGames: data.upcomingGames, round: data.round };
+  return { liveGames: data.liveGames, upcomingGames: data.upcomingGames, pastGames: data.pastGames || [], round: data.round };
 }
 
 /** Main poll — refreshes live game data */
@@ -3903,10 +4023,11 @@ async function pollLiveData() {
   const data = await fetchGameData();
   State.liveGames     = data.liveGames;
   State.upcomingGames = data.upcomingGames;
+  State.pastGames     = data.pastGames || [];
 
   // Re-render watch tab if it's active
   if (State.activeView === 'watch') {
-    renderWatchTab(State.liveGames, State.upcomingGames);
+    renderWatchTab(State.liveGames, State.upcomingGames, State.pastGames);
   }
 
   // Update current game if open
@@ -4028,7 +4149,7 @@ document.getElementById('btn-clear-data').addEventListener('click', () => {
 // Screenshot listeners removed with team tab — screenshot functionality
 // is now accessible via the Opp Team card's import panel in Customise Players.
 // The helper functions below (fileToBase64, screenshotSet*, screenshotShowConfirm)
-// remain available for use by buildOppImportPanel if wired in future.
+// These helpers remain available for future screenshot import features.
 
 if (false) { // Dead code block — kept for reference, never executes
 document.getElementById('btn-import-screenshot').addEventListener('click', () => {
@@ -4507,6 +4628,28 @@ function formatPlayerName(fullName) {
   return `${initial} ${surname}`;
 }
 
+/**
+ * Return a readable text colour for display on a dark background.
+ * If the colour's relative luminance is below 0.15 (near-black),
+ * return white instead so text is always visible.
+ * Specifically fixes Collingwood (#000000) and other dark team colours.
+ *
+ * @param {string} hex  e.g. '#000000' or '#3b82f6'
+ * @returns {string}    the input hex or '#ffffff'
+ */
+function getReadableTextColour(hex) {
+  if (!hex || hex.length < 4) return '#ffffff';
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const r = parseInt(h.slice(0,2),16)/255;
+  const g = parseInt(h.slice(2,4),16)/255;
+  const b = parseInt(h.slice(4,6),16)/255;
+  // sRGB linearise
+  const lin = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  const L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+  return L < 0.15 ? '#ffffff' : hex;
+}
+
 /** Safely escapes HTML to prevent XSS */
 function escHtml(str) {
   const d = document.createElement('div');
@@ -4527,7 +4670,7 @@ function init() {
   }
 
   // Seed the watch tab with empty state immediately so layout is visible
-  renderWatchTab([], []);
+  renderWatchTab([], [], []);
 
   // ── Attempt to restore last session ────────────────────────────────────────
   // "activeEmail" is set by activateUser() and cleared by signOut().
