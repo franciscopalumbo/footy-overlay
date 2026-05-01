@@ -15,6 +15,9 @@
  * ENVIRONMENT VARIABLES:
  *   FANFOOTY_LIVE=true   — perform real scraping. Anything else (or unset)
  *                          serves MOCK_RESPONSE.
+ *   FANFOOTY_DEBUG=true  — dump structural diagnostics to console.log so
+ *                          you can paste Netlify logs and trace parser
+ *                          behaviour without re-fetching live HTML.
  *
  * ENDPOINT (via netlify.toml redirect):
  *   GET /api/fanfooty-proxy
@@ -215,6 +218,13 @@ exports.handler = async function (event) {
     const $fixture = cheerio.load(fixtureHtml);
     const $home    = cheerio.load(homepageHtml);
 
+    if (process.env.FANFOOTY_DEBUG === 'true') {
+      dumpDiagnostics(
+        { roundScoresHtml, fixtureHtml, homepageHtml },
+        { $scores, $fixture, $home },
+      );
+    }
+
     const round         = parseRoundNumber($scores);
     const homepageGames = parseHomepageGames($home);
     const fixtureGames  = parseFixtureRound($fixture, round);
@@ -263,6 +273,123 @@ function jsonHeaders() {
 
 function ok(payload) {
   return { statusCode: 200, headers: jsonHeaders(), body: JSON.stringify(payload) };
+}
+
+// ─── DIAGNOSTICS (only runs when FANFOOTY_DEBUG=true) ─────────────────────────
+
+/**
+ * Emit structural information about the three fetched pages so we can
+ * trace parser behaviour from Netlify logs without re-fetching live HTML.
+ *
+ * Output is prefixed with "[DEBUG]" so it can be grep'd. Designed for
+ * volume — produces ~100 log lines and should be left OFF in normal
+ * operation.
+ *
+ * What's reported per page:
+ *   · response byte length (sanity check: are we getting full HTML?)
+ *   · first 500 characters of HTML (sanity check: HTML or error page?)
+ *   · table count, td count, tr count, anchor count
+ *   · title text and what parseRoundNumber sees
+ *
+ * What's reported for roundscores specifically:
+ *   · per-table cell counts (helps spot empty tables vs game tables)
+ *   · first 30 td texts of each table that has ≥7 cells (game candidates)
+ *   · which cells match the team-header regex (and what text they had)
+ *   · count of <a href*="/player/"> elements
+ *
+ * What's reported for fixture specifically:
+ *   · per-tr first-cell text for the first 80 rows (so we see all round
+ *     headers and the first ~70 game rows)
+ *   · count of cells containing " vs "
+ */
+function dumpDiagnostics(htmls, parsers) {
+  const { roundScoresHtml, fixtureHtml, homepageHtml } = htmls;
+  const { $scores, $fixture, $home } = parsers;
+
+  console.log('[DEBUG] ===== begin diagnostics =====');
+
+  // ── Per-page sanity ──────────────────────────────────────────────────────
+  for (const [label, html, $] of [
+    ['roundscores', roundScoresHtml, $scores],
+    ['fixture',    fixtureHtml,     $fixture],
+    ['homepage',   homepageHtml,    $home],
+  ]) {
+    console.log(`[DEBUG] ${label}: ${html.length} bytes`);
+    // First 500 chars, with newlines collapsed for log readability
+    const head = html.slice(0, 500).replace(/\s+/g, ' ');
+    console.log(`[DEBUG] ${label} head: ${head}`);
+    console.log(
+      `[DEBUG] ${label} counts: ` +
+      `tables=${$('table').length} ` +
+      `trs=${$('tr').length} ` +
+      `tds=${$('td').length} ` +
+      `anchors=${$('a').length} ` +
+      `playerLinks=${$('a[href*="/player/"]').length} ` +
+      `liveLinks=${$('a[href*="/live/"]').length}`,
+    );
+    const title = $('title').text().trim();
+    console.log(`[DEBUG] ${label} title: "${title}"`);
+  }
+
+  // ── Roundscores: per-table inspection ────────────────────────────────────
+  console.log('[DEBUG] --- roundscores tables ---');
+  $scores('table').each((tIdx, table) => {
+    const cells = $scores(table).find('td');
+    if (cells.length < 7) {
+      console.log(`[DEBUG] table[${tIdx}]: ${cells.length} cells (skipped — too few)`);
+      return;
+    }
+    console.log(`[DEBUG] table[${tIdx}]: ${cells.length} cells`);
+
+    // First 30 cell texts (truncated)
+    const samples = [];
+    cells.slice(0, 30).each((cIdx, cell) => {
+      const text = $scores(cell).text().trim().slice(0, 40);
+      const hasLink = $scores(cell).find('a').length > 0;
+      samples.push(`  [${cIdx}]${hasLink ? '🔗' : '  '}"${text}"`);
+    });
+    console.log(`[DEBUG] table[${tIdx}] first 30 cells:\n${samples.join('\n')}`);
+
+    // Find cells matching team-header regex
+    const headerMatches = [];
+    cells.each((cIdx, cell) => {
+      const $cell = $scores(cell);
+      if ($cell.find('a').length > 0) return;
+      const text = $cell.text().trim();
+      // Don't use parseTeamHeader (which requires a known team) here —
+      // just check if the SHAPE matches, so we can see whether the regex
+      // fails or only the team-name resolution fails.
+      if (/^.+:\s*\d+\.\d+(\.\d+)?$/.test(text)) {
+        headerMatches.push(`[${cIdx}] "${text}"`);
+      }
+    });
+    console.log(`[DEBUG] table[${tIdx}] team-header regex matches: ${headerMatches.length}`);
+    if (headerMatches.length > 0 && headerMatches.length < 10) {
+      headerMatches.forEach(m => console.log(`[DEBUG]   ${m}`));
+    }
+  });
+
+  // ── Fixture: per-row inspection ──────────────────────────────────────────
+  console.log('[DEBUG] --- fixture rows (first 80) ---');
+  $fixture('tr').slice(0, 80).each((rIdx, row) => {
+    const cells = $fixture(row).find('td');
+    const firstText = cells.length ? $fixture(cells[0]).text().trim().slice(0, 30) : '<no cells>';
+    const vsCount = cells.filter((_, c) => $fixture(c).text().includes(' vs ')).length;
+    console.log(`[DEBUG] tr[${rIdx}]: ${cells.length} cells, first="${firstText}"${vsCount ? ' VS' : ''}`);
+  });
+  const totalVs = $fixture('td').filter((_, c) => $fixture(c).text().includes(' vs ')).length;
+  console.log(`[DEBUG] fixture: ${totalVs} cells contain " vs " total`);
+
+  // ── Homepage: live link inspection ───────────────────────────────────────
+  console.log('[DEBUG] --- homepage live links (first 5) ---');
+  $home('a[href*="/live/"]').slice(0, 5).each((idx, el) => {
+    const $a = $home(el);
+    const href = $a.attr('href') || '';
+    const text = $a.text().replace(/\s+/g, ' ').trim().slice(0, 80);
+    console.log(`[DEBUG] live[${idx}] href="${href}" text="${text}"`);
+  });
+
+  console.log('[DEBUG] ===== end diagnostics =====');
 }
 
 // ─── ROUND NUMBER ─────────────────────────────────────────────────────────────
@@ -352,31 +479,40 @@ function parseRoundScores($) {
         blocks.push({ header: currentHeader, start: currentStart, end: cells.length });
       }
 
-      if (blocks.length !== 2) return;
+      // Accept any even number of blocks, paired in order. This covers:
+      //   · 0 blocks (skip)
+      //   · 2 blocks (typical: one game per table)
+      //   · 4, 6, 8, ... blocks (production may put multiple games per table)
+      // Odd numbers indicate a parse problem; we still process pairs and
+      // drop the trailing unpaired block.
+      if (blocks.length < 2) return;
 
-      const [blockA, blockB] = blocks;
-      const playersA = collectPlayersInRange($, cells, blockA.start, blockA.end);
-      const playersB = collectPlayersInRange($, cells, blockB.start, blockB.end);
+      for (let pairIdx = 0; pairIdx + 1 < blocks.length; pairIdx += 2) {
+        const blockA = blocks[pairIdx];
+        const blockB = blocks[pairIdx + 1];
+        const playersA = collectPlayersInRange($, cells, blockA.start, blockA.end);
+        const playersB = collectPlayersInRange($, cells, blockB.start, blockB.end);
 
-      const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
-      result.set(key, {
-        teamA: {
-          key:     blockA.header.teamKey,
-          name:    blockA.header.canonical.names[0],
-          score:   blockA.header.score,
-          goals:   blockA.header.goals,
-          behinds: blockA.header.behinds,
-          players: playersA,
-        },
-        teamB: {
-          key:     blockB.header.teamKey,
-          name:    blockB.header.canonical.names[0],
-          score:   blockB.header.score,
-          goals:   blockB.header.goals,
-          behinds: blockB.header.behinds,
-          players: playersB,
-        },
-      });
+        const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
+        result.set(key, {
+          teamA: {
+            key:     blockA.header.teamKey,
+            name:    blockA.header.canonical.names[0],
+            score:   blockA.header.score,
+            goals:   blockA.header.goals,
+            behinds: blockA.header.behinds,
+            players: playersA,
+          },
+          teamB: {
+            key:     blockB.header.teamKey,
+            name:    blockB.header.canonical.names[0],
+            score:   blockB.header.score,
+            goals:   blockB.header.goals,
+            behinds: blockB.header.behinds,
+            players: playersB,
+          },
+        });
+      }
     } catch (e) {
       console.warn(`[parseRoundScores] Skipped a table: ${e.message}`);
     }
@@ -441,59 +577,84 @@ function collectPlayersInRange($, cells, start, end) {
 
 // ─── FIXTURE PARSER ───────────────────────────────────────────────────────────
 
+/**
+ * Parse fixture.php and extract every game in the given round.
+ *
+ * IMPLEMENTATION NOTE — DEFENSIVE AGAINST MALFORMED HTML:
+ *   FanFooty's pages are PHP-generated and may emit `<td>` directly inside
+ *   `<table>` without `<tr>` wrappers. cheerio (parse5) preserves these
+ *   foster-parented cells but they're not visible to `$('tr').each()`.
+ *
+ *   So we walk the flat cell sequence (all <td> in document order) and
+ *   reconstruct logical rows by anchoring on cells containing " vs ".
+ *   For each `vs` cell at index i, we look at:
+ *     · cells[i-2] = day name (e.g. "Saturday") or blank
+ *     · cells[i-1] = date (e.g. "April 30") or blank — inherit from
+ *                    most recent non-blank if blank
+ *     · cells[i+1] = venue
+ *     · cells[i+2] = time
+ *   "Round N" header cells, found by a regex on cell text, set the
+ *   currentRound that subsequent vs cells belong to.
+ */
 function parseFixtureRound($, targetRound) {
   const games = [];
+
+  // Get every <td> in document order, regardless of <tr> structure
+  const allCells = $('td').toArray();
+  if (!allCells.length) return games;
+
   let currentRound = 0;
   let lastDay  = '';
   let lastDate = '';
 
-  $('tr').each((_, row) => {
-    const $row = $(row);
-    const cells = $row.find('td');
-    if (!cells.length) return;
+  for (let i = 0; i < allCells.length; i++) {
+    const text = $(allCells[i]).text().trim();
 
-    const firstText = $(cells[0]).text().trim();
-    const roundMatch = firstText.match(/^Round\s+(\w+)/i);
+    // Round header detection — be liberal about what comes after "Round"
+    // since FanFooty has both numeric (Round 1, Round 8) and prefixed
+    // (Round HA, Round P1) variants. We only consider numeric ones in scope.
+    const roundMatch = text.match(/^Round\s+(\w+)\b/i);
     if (roundMatch) {
       const n = parseInt(roundMatch[1], 10);
       currentRound = Number.isNaN(n) ? -1 : n;
+      // New round means we shouldn't carry over date inheritance
       lastDay = ''; lastDate = '';
-      return;
+      continue;
     }
 
-    if (currentRound !== targetRound) return;
+    // Skip non-vs cells
+    if (!text.includes(' vs ')) continue;
 
-    let vsIdx = -1;
-    cells.each((idx, cell) => {
-      if ($(cell).text().includes(' vs ')) { vsIdx = idx; return false; }
-    });
-    if (vsIdx === -1) return;
+    // We've found a game cell. Only process if we're in the target round.
+    if (currentRound !== targetRound) continue;
 
     try {
-      const opponentsText = $(cells[vsIdx]).text().trim();
-      const vsParts = opponentsText.split(/\s+vs\s+/);
-      if (vsParts.length < 2) return;
+      const vsParts = text.split(/\s+vs\s+/);
+      if (vsParts.length < 2) continue;
 
       const teamA = findTeamByAnyName(vsParts[0].trim());
       const teamB = findTeamByAnyName(vsParts[1].trim());
-      if (!teamA || !teamB) return;
+      if (!teamA || !teamB) continue;
 
-      let dayText  = '';
-      let dateText = '';
-      if (vsIdx >= 2) {
-        dayText  = $(cells[vsIdx - 2]).text().trim();
-        dateText = $(cells[vsIdx - 1]).text().trim();
-      } else if (vsIdx === 1) {
-        dateText = $(cells[0]).text().trim();
-      }
+      // Look at neighbouring cells. These offsets assume the standard
+      // FanFooty fixture layout: [day][date][opponents][ground][time]
+      const dayCell  = i >= 2 ? $(allCells[i - 2]).text().trim() : '';
+      const dateCell = i >= 1 ? $(allCells[i - 1]).text().trim() : '';
+      const venue = i + 1 < allCells.length ? $(allCells[i + 1]).text().trim() : '';
+      const time  = i + 2 < allCells.length ? $(allCells[i + 2]).text().trim() : '';
 
-      if (!dayText)  dayText  = lastDay;
-      if (!dateText) dateText = lastDate;
-      if (dayText)   lastDay  = dayText;
-      if (dateText)  lastDate = dateText;
+      // Day/date inheritance: if blank, reuse last non-blank values.
+      // BUT only inherit if the cell is genuinely blank — not if it contains
+      // some other text we don't recognize.
+      let dayText = dayCell || lastDay;
+      let dateText = dateCell || lastDate;
 
-      const venue = cells.length > vsIdx + 1 ? $(cells[vsIdx + 1]).text().trim() : '';
-      const time  = cells.length > vsIdx + 2 ? $(cells[vsIdx + 2]).text().trim() : '';
+      // Only update inheritance vars when we got real day/date (not when
+      // the dayCell was the previous game's venue or some other artifact).
+      // Heuristic: a day cell looks like "Monday".."Sunday"; a date cell
+      // looks like "Month NN" or "NN Month".
+      if (/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(dayCell)) lastDay = dayCell;
+      if (/^[A-Za-z]+\s+\d{1,2}$|^\d{1,2}\s+[A-Za-z]+$/.test(dateCell)) lastDate = dateCell;
 
       games.push({
         teamAKey: teamA.key,
@@ -510,9 +671,9 @@ function parseFixtureRound($, targetRound) {
         kickoffMs: parseKickoffMs(dayText, dateText, time),
       });
     } catch (e) {
-      console.warn('[parseFixtureRound] Skipped a row:', e.message);
+      console.warn('[parseFixtureRound] Skipped a vs cell:', e.message);
     }
-  });
+  }
 
   return games;
 }
