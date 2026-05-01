@@ -1,0 +1,17 @@
+{
+  "name": "footy-overlay",
+  "version": "1.0.0",
+  "description": "Live AFL Fantasy & SuperCoach scoring overlay for web and Android TV",
+  "private": true,
+  "scripts": {
+    "dev": "netlify dev",
+    "deploy": "netlify deploy --prod"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "node-fetch": "^2.7.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
