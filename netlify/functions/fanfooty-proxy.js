@@ -3,8 +3,13 @@
  * File: /netlify/functions/fanfooty-proxy.js
  *
  * DEPENDENCIES:
- *   npm install node-fetch@2 cheerio
- *   (node-fetch v2 is required — v3 is ESM-only and won't load via require())
+ *   npm install cheerio
+ *
+ *   We use the native fetch() global, which is built into Node.js 18+ and
+ *   therefore available in Netlify Functions without any package install.
+ *   No node-fetch dependency — that package's v3 line is ESM-only and v2
+ *   pulls in a transitive `undici` that crashes on Node 18 with
+ *   "ReferenceError: File is not defined". Native fetch sidesteps both.
  *
  * ENVIRONMENT VARIABLES:
  *   FANFOOTY_LIVE=true   — perform real scraping. Anything else (or unset)
@@ -59,8 +64,8 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const fetch   = require('node-fetch');
 const cheerio = require('cheerio');
+// fetch() is a Node 18+ global — no import needed.
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 

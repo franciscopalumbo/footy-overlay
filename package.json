@@ -8,8 +8,7 @@
     "deploy": "netlify deploy --prod"
   },
   "dependencies": {
-    "cheerio": "^1.0.0",
-    "node-fetch": "^2.7.0"
+    "cheerio": "^1.0.0"
   },
   "engines": {
     "node": "18.x"
