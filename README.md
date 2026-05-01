@@ -1,5 +1,8 @@
 # FootyOverlay
 
+![License: FSAL-1.0](https://img.shields.io/badge/License-FSAL--1.0-blue.svg)
+![Use: Non-Commercial](https://img.shields.io/badge/Use-Non--Commercial-red.svg)
+
 > Live AFL Fantasy & SuperCoach scoring overlay — for web and Android TV.
 
 A single-file SPA that sits over your AFL viewing experience and shows real-time fantasy scores for your tracked players. Deployable to Netlify in one click, and packageable as a native Android TV app via Capacitor.
