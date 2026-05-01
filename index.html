@@ -911,44 +911,78 @@
     }
 
     /* ============================================================
-       CUSTOMISE PLAYERS VIEW (View 3) — dual-panel side-by-side picker
+       CUSTOMISE PLAYERS VIEW (View 3) — team card + player modal system
        ============================================================ */
 
-    /* Two panels sit side-by-side on desktop, stack on mobile */
-    .pick-panels {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 24px;
-    }
-    @media (max-width: 640px) {
-      .pick-panels { grid-template-columns: 1fr; }
+    /* Team cards stack vertically */
+    .team-cards-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
     }
 
-    .pick-panel {
+    /* Each team card */
+    .team-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
-      display: flex;
-      flex-direction: column;
+      transition: var(--transition);
     }
 
-    .pick-panel-header {
+    .team-card-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      gap: 10px;
       padding: 12px 16px;
-      border-left: 5px solid var(--accent-blue); /* overridden inline per team */
+      border-left: 5px solid var(--accent-blue);
       background: rgba(255,255,255,0.03);
+    }
+
+    /* Inline colour picker dot on the header */
+    .team-card-colour-btn {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      cursor: pointer;
       flex-shrink: 0;
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+      transition: var(--transition);
     }
-    .pick-panel-title {
+    .team-card-colour-btn:hover { border-color: rgba(255,255,255,0.7); }
+    .team-card-colour-btn input[type="color"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%; height: 100%;
+      border: none; padding: 0;
+    }
+
+    .team-card-name {
       font-family: var(--font-display);
-      font-size: 1.2rem;
-      letter-spacing: 0.05em;
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      flex: 1;
+      min-width: 0;
     }
-    .pick-panel-count {
+    .team-card-name input {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed var(--border);
+      color: var(--text-primary);
+      width: 100%;
+      padding: 0;
+    }
+    .team-card-name input:focus { outline: none; border-bottom-color: var(--accent-blue); }
+
+    .team-card-count {
       font-size: 0.72rem;
       color: var(--text-muted);
       background: var(--bg-secondary);
@@ -957,45 +991,127 @@
       white-space: nowrap;
     }
 
-    /* Scrollable player list inside each panel */
-    .pick-list {
-      overflow-y: auto;
-      /* Fills remaining panel height; cap so both panels don't go off-screen */
-      max-height: 420px;
-      flex: 1;
-    }
-    @media (max-width: 640px) {
-      .pick-list { max-height: 260px; }
+    .team-card-body {
+      padding: 0;
     }
 
-    /* Individual player row */
+    /* Player list inside a team card */
+    .team-card-player-list {
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .team-card-player-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.82rem;
+    }
+    .team-card-player-row:last-child { border-bottom: none; }
+
+    .team-card-jersey {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      min-width: 22px;
+      text-align: right;
+    }
+    .team-card-player-name { flex: 1; }
+    .team-card-remove {
+      width: 20px; height: 20px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+    .team-card-remove:hover { background: rgba(239,68,68,0.12); color: var(--accent-red); border-color: rgba(239,68,68,0.3); }
+
+    .team-card-empty {
+      padding: 14px 16px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .team-card-footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Player picker modal — two side-by-side panels */
+    #modal-player-picker .modal {
+      max-width: 700px;
+    }
+    .pick-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 580px) {
+      .pick-panels { grid-template-columns: 1fr; }
+      #modal-player-picker .modal { max-width: 100%; }
+    }
+
+    .pick-panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .pick-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-left: 4px solid var(--accent-blue);
+      background: rgba(255,255,255,0.03);
+    }
+    .pick-panel-title {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+    }
+    .pick-panel-count {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .pick-list {
+      max-height: 340px;
+      overflow-y: auto;
+    }
+
     .pick-row {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 9px 14px;
-      border-bottom: 1px solid var(--border);
+      gap: 8px;
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
       cursor: pointer;
-      transition: background 0.15s;
+      transition: background 0.12s;
       user-select: none;
+      font-size: 0.82rem;
     }
     .pick-row:last-child { border-bottom: none; }
-    .pick-row:hover     { background: var(--bg-card-hover); }
-    .pick-row.selected  { background: rgba(59,130,246,0.1); }
-    .pick-row:focus-visible {
-      outline: 3px solid var(--accent-live);
-      outline-offset: -3px;
-    }
+    .pick-row:hover    { background: var(--bg-card-hover); }
+    .pick-row.selected { background: rgba(59,130,246,0.1); }
+    .pick-row:focus-visible { outline: 2px solid var(--accent-live); outline-offset: -2px; }
 
-    /* Checkbox — custom styled so it matches the dark theme */
     .pick-checkbox {
-      width: 16px; height: 16px;
-      border-radius: 4px;
+      width: 15px; height: 15px;
+      border-radius: 3px;
       border: 1.5px solid var(--text-muted);
       background: transparent;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       flex-shrink: 0;
       transition: var(--transition);
     }
@@ -1006,53 +1122,42 @@
     .pick-checkbox::after {
       content: '';
       display: none;
-      width: 4px; height: 7px;
+      width: 3px; height: 6px;
       border: 2px solid #fff;
-      border-top: none;
-      border-left: none;
+      border-top: none; border-left: none;
       transform: rotate(45deg) translate(-1px, -1px);
     }
     .pick-row.selected .pick-checkbox::after { display: block; }
 
     .pick-jersey {
       font-family: var(--font-display);
-      font-size: 1rem;
+      font-size: 0.85rem;
       color: var(--text-muted);
-      min-width: 26px;
+      min-width: 22px;
       text-align: right;
       flex-shrink: 0;
     }
-    .pick-name {
-      font-size: 0.875rem;
-      font-weight: 500;
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .pick-pos {
-      font-size: 0.7rem;
-      color: var(--text-muted);
-      flex-shrink: 0;
-    }
+    .pick-name { flex: 1; }
+    .pick-pos  { font-size: 0.68rem; color: var(--text-muted); flex-shrink: 0; }
 
-    /* "Select all" header row inside the list */
     .pick-select-all {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 14px;
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
       border-bottom: 1px solid var(--border);
       cursor: pointer;
       background: rgba(255,255,255,0.02);
-      font-size: 0.75rem;
-      font-weight: 600;
+      font-size: 0.7rem; font-weight: 600;
       color: var(--text-muted);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      transition: background 0.15s;
+      letter-spacing: 0.04em; text-transform: uppercase;
+      transition: background 0.12s;
     }
     .pick-select-all:hover { background: var(--bg-card-hover); }
+
+    /* Opponent import panel inside customise view */
+    #opp-import-panel {
+      display: none;
+      margin-top: 8px;
+    }
 
     /* ============================================================
        OVERLAY VIEW (View 4) — Fixed, draggable, always-on-top
@@ -1529,22 +1634,28 @@
     </section>
 
     <!-- ============================================================
-         VIEW: CUSTOMISE PLAYERS (view 3) — dual-panel team picker
+         VIEW: CUSTOMISE PLAYERS (view 3) — team card system
          ============================================================ -->
     <section id="view-customise" class="view" aria-label="Customise fantasy teams">
 
-      <!-- Top toolbar: back | heading | scoreboard mode -->
+      <!-- Top toolbar -->
       <div class="flex items-center justify-between mb-24">
         <button class="back-btn" id="customise-back" aria-label="Return to game detail">← Back</button>
-        <h1 class="section-heading" style="margin-bottom:0">🎨 Select Players</h1>
+        <h1 class="section-heading" style="margin-bottom:0">🎨 Customise Players</h1>
         <button class="btn btn-danger btn-sm" id="btn-scoreboard-mode" tabindex="0">
           📋 Full Scoreboard
         </button>
       </div>
 
-      <!-- Side-by-side team panels (injected by renderPickPanels()) -->
-      <div class="pick-panels" id="pick-panels-wrap" aria-label="Player selection panels">
+      <!-- Team cards (injected by renderTeamCards()) -->
+      <div class="team-cards-wrap" id="team-cards-wrap">
         <!-- Injected by JS -->
+      </div>
+
+      <!-- Add team button -->
+      <div class="flex items-center gap-12 mb-24">
+        <button class="btn btn-ghost btn-sm" id="btn-add-custom-team" tabindex="0">+ Add Team</button>
+        <span id="team-card-count-label" class="text-muted text-sm"></span>
       </div>
 
       <div class="divider"></div>
@@ -1607,7 +1718,7 @@
             <div id="screenshot-loading" style="display:none;">
               <div class="loading-state">
                 <div class="spinner"></div>
-                <span>Reading screenshot…</span>
+                <span>Reading screenshot… <span style="color:var(--text-muted);font-size:0.8rem;">For best results, crop to show only the player list.</span></span>
               </div>
             </div>
 
@@ -1879,6 +1990,25 @@
 </div>
 
 
+
+<!-- Player picker modal — opened by "+ Add Players" on each team card -->
+<div class="modal-backdrop" id="modal-player-picker" role="dialog" aria-modal="true" aria-labelledby="modal-picker-title">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-picker-title">Add Players</span>
+      <button class="modal-close" id="modal-picker-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px;">
+      <!-- Two side-by-side team panels — injected by openPlayerPicker() -->
+      <div class="pick-panels" id="picker-panels-wrap"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="modal-picker-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-picker-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <!-- ================================================================
      JAVASCRIPT
      ================================================================ -->
@@ -1887,10 +2017,13 @@
 
 /* ================================================================
    CONSTANTS — SCORING SYSTEMS
-   Edit these values if AFL Fantasy / SuperCoach update their rules
+   ⚠️  Score calculation is intentionally unused — scores are sourced
+   directly from FanFooty's pre-calculated DT and SC columns.
+   These constants are kept for reference only and may be useful
+   if a manual calculation fallback is ever needed.
    ================================================================ */
 
-/** @type {Object} AFL Fantasy point values per action */
+/** @type {Object} AFL Fantasy point values per action (reference only — not used for calculation) */
 const AFL_FANTASY_POINTS = {
   goal:         6,
   behind:       1,
@@ -2063,16 +2196,54 @@ const MOCK_DATA = {
       venue: 'MCG',
       status: 'live',
       players: [
-        { id: 'p01', jersey: 4,  name: 'D. Martin',       pos: 'MID', score: 88  },
-        { id: 'p02', jersey: 12, name: 'S. Bolton',          pos: 'FWD', score: 54  },
-        { id: 'p03', jersey: 8,  name: 'J. Riewoldt',        pos: 'FWD', score: 62  },
-        { id: 'p04', jersey: 7,  name: 'T. Cotchin',        pos: 'MID', score: 71  },
-        { id: 'p05', jersey: 22, name: 'N. Vlastuin',        pos: 'DEF', score: 49  },
-        { id: 'p06', jersey: 14, name: 'S. Pendlebury',     pos: 'MID', score: 102 },
-        { id: 'p07', jersey: 10, name: 'D. Moore',          pos: 'DEF', score: 58  },
-        { id: 'p08', jersey: 5,  name: 'J. De Goey',       pos: 'FWD', score: 76  },
-        { id: 'p09', jersey: 20, name: 'B. Maynard',      pos: 'DEF', score: 44  },
-        { id: 'p10', jersey: 33, name: 'N. Daicos',          pos: 'MID', score: 118 },
+        // ── Richmond (teamA) — 23-man match day squad ────────────────────
+        { id: 'rich01', jersey: 4,  name: 'D. Martin',      pos: 'MID', score: 88,  scoreDT: 88,  scoreSC: 91  },
+        { id: 'rich02', jersey: 12, name: 'S. Bolton',       pos: 'FWD', score: 54,  scoreDT: 54,  scoreSC: 49  },
+        { id: 'rich03', jersey: 8,  name: 'J. Riewoldt',     pos: 'FWD', score: 62,  scoreDT: 62,  scoreSC: 68  },
+        { id: 'rich04', jersey: 7,  name: 'T. Cotchin',      pos: 'MID', score: 71,  scoreDT: 71,  scoreSC: 75  },
+        { id: 'rich05', jersey: 22, name: 'N. Vlastuin',     pos: 'DEF', score: 49,  scoreDT: 49,  scoreSC: 44  },
+        { id: 'rich06', jersey: 13, name: 'T. Lynch',        pos: 'FWD', score: 58,  scoreDT: 58,  scoreSC: 62  },
+        { id: 'rich07', jersey: 6,  name: 'D. Rioli',        pos: 'FWD', score: 41,  scoreDT: 41,  scoreSC: 37  },
+        { id: 'rich08', jersey: 11, name: 'K. McIntosh',     pos: 'DEF', score: 33,  scoreDT: 33,  scoreSC: 30  },
+        { id: 'rich09', jersey: 9,  name: 'D. Prestia',      pos: 'MID', score: 67,  scoreDT: 67,  scoreSC: 70  },
+        { id: 'rich10', jersey: 23, name: 'M. Pickett',      pos: 'DEF', score: 45,  scoreDT: 45,  scoreSC: 42  },
+        { id: 'rich11', jersey: 3,  name: 'B. Baker',        pos: 'DEF', score: 38,  scoreDT: 38,  scoreSC: 35  },
+        { id: 'rich12', jersey: 18, name: 'L. Baker',        pos: 'DEF', score: 52,  scoreDT: 52,  scoreSC: 55  },
+        { id: 'rich13', jersey: 15, name: 'H. Ralphsmith',   pos: 'FWD', score: 29,  scoreDT: 29,  scoreSC: 26  },
+        { id: 'rich14', jersey: 21, name: 'R. Mansell',      pos: 'MID', score: 44,  scoreDT: 44,  scoreSC: 41  },
+        { id: 'rich15', jersey: 32, name: 'T. Nankervis',    pos: 'RUC', score: 61,  scoreDT: 61,  scoreSC: 66  },
+        { id: 'rich16', jersey: 16, name: 'J. Graham',       pos: 'FWD', score: 36,  scoreDT: 36,  scoreSC: 32  },
+        { id: 'rich17', jersey: 2,  name: 'D. Grimes',       pos: 'DEF', score: 55,  scoreDT: 55,  scoreSC: 58  },
+        { id: 'rich18', jersey: 26, name: 'W. Broadbent',    pos: 'DEF', score: 31,  scoreDT: 31,  scoreSC: 28  },
+        { id: 'rich19', jersey: 37, name: 'J. Ross',         pos: 'MID', score: 48,  scoreDT: 48,  scoreSC: 45  },
+        { id: 'rich20', jersey: 29, name: 'M. Parker',       pos: 'MID', score: 22,  scoreDT: 22,  scoreSC: 19  },
+        { id: 'rich21', jersey: 44, name: 'I. Cumberland',   pos: 'FWD', score: 27,  scoreDT: 27,  scoreSC: 24  },
+        { id: 'rich22', jersey: 5,  name: 'M. Buntine',      pos: 'DEF', score: 19,  scoreDT: 19,  scoreSC: 17  },
+        { id: 'rich23', jersey: 35, name: 'J. Koschitzke',   pos: 'FWD', score: 15,  scoreDT: 15,  scoreSC: 13  },
+        // ── Collingwood (teamB) — 23-man match day squad ──────────────────
+        { id: 'coll01', jersey: 14, name: 'S. Pendlebury',   pos: 'MID', score: 102, scoreDT: 102, scoreSC: 109 },
+        { id: 'coll02', jersey: 10, name: 'D. Moore',        pos: 'DEF', score: 58,  scoreDT: 58,  scoreSC: 55  },
+        { id: 'coll03', jersey: 5,  name: 'J. De Goey',      pos: 'FWD', score: 76,  scoreDT: 76,  scoreSC: 72  },
+        { id: 'coll04', jersey: 21, name: 'B. Maynard',      pos: 'DEF', score: 44,  scoreDT: 44,  scoreSC: 41  },
+        { id: 'coll05', jersey: 35, name: 'N. Daicos',       pos: 'MID', score: 118, scoreDT: 118, scoreSC: 124 },
+        { id: 'coll06', jersey: 2,  name: 'D. Moore (CB)',   pos: 'DEF', score: 47,  scoreDT: 47,  scoreSC: 44  },
+        { id: 'coll07', jersey: 49, name: 'M. Cox',          pos: 'RUC', score: 54,  scoreDT: 54,  scoreSC: 59  },
+        { id: 'coll08', jersey: 17, name: 'C. Brown',        pos: 'FWD', score: 38,  scoreDT: 38,  scoreSC: 35  },
+        { id: 'coll09', jersey: 6,  name: 'J. Crisp',        pos: 'MID', score: 83,  scoreDT: 83,  scoreSC: 88  },
+        { id: 'coll10', jersey: 11, name: 'T. Adams',        pos: 'MID', score: 65,  scoreDT: 65,  scoreSC: 68  },
+        { id: 'coll11', jersey: 9,  name: 'B. Mihocek',      pos: 'FWD', score: 43,  scoreDT: 43,  scoreSC: 40  },
+        { id: 'coll12', jersey: 37, name: 'N. Murphy',       pos: 'DEF', score: 29,  scoreDT: 29,  scoreSC: 26  },
+        { id: 'coll13', jersey: 18, name: 'T. Bianco',       pos: 'MID', score: 34,  scoreDT: 34,  scoreSC: 31  },
+        { id: 'coll14', jersey: 22, name: 'J. Elliott',      pos: 'FWD', score: 52,  scoreDT: 52,  scoreSC: 48  },
+        { id: 'coll15', jersey: 26, name: 'I. Quaynor',      pos: 'DEF', score: 39,  scoreDT: 39,  scoreSC: 36  },
+        { id: 'coll16', jersey: 44, name: 'O. Henry',        pos: 'FWD', score: 28,  scoreDT: 28,  scoreSC: 25  },
+        { id: 'coll17', jersey: 3,  name: 'F. Macrae',       pos: 'MID', score: 78,  scoreDT: 78,  scoreSC: 82  },
+        { id: 'coll18', jersey: 15, name: 'D. Cameron',      pos: 'DEF', score: 33,  scoreDT: 33,  scoreSC: 30  },
+        { id: 'coll19', jersey: 31, name: 'P. Lipinski',     pos: 'MID', score: 47,  scoreDT: 47,  scoreSC: 50  },
+        { id: 'coll20', jersey: 23, name: 'W. Kelly',        pos: 'FWD', score: 22,  scoreDT: 22,  scoreSC: 19  },
+        { id: 'coll21', jersey: 19, name: 'L. Schultz',      pos: 'DEF', score: 18,  scoreDT: 18,  scoreSC: 16  },
+        { id: 'coll22', jersey: 28, name: 'B. Frampton',     pos: 'DEF', score: 24,  scoreDT: 24,  scoreSC: 21  },
+        { id: 'coll23', jersey: 42, name: 'C. Holman',       pos: 'FWD', score: 12,  scoreDT: 12,  scoreSC: 10  },
       ]
     },
     {
@@ -2084,12 +2255,54 @@ const MOCK_DATA = {
       venue: 'Marvel Stadium',
       status: 'live',
       players: [
-        { id: 'p11', jersey: 5,  name: 'P. Cripps',       pos: 'MID', score: 95  },
-        { id: 'p12', jersey: 3,  name: 'H. McKay',          pos: 'FWD', score: 41  },
-        { id: 'p13', jersey: 9,  name: 'S. Walsh',            pos: 'MID', score: 67  },
-        { id: 'p14', jersey: 8,  name: 'J. Sicily',         pos: 'DEF', score: 74  },
-        { id: 'p15', jersey: 12, name: 'J. Newcombe',         pos: 'MID', score: 83  },
-        { id: 'p16', jersey: 15, name: 'D. Moore',          pos: 'FWD', score: 52  },
+        // ── Carlton (teamA) — 23-man match day squad ──────────────────────
+        { id: 'carl01', jersey: 9,  name: 'P. Cripps',      pos: 'MID', score: 95,  scoreDT: 95,  scoreSC: 101 },
+        { id: 'carl02', jersey: 1,  name: 'H. McKay',        pos: 'FWD', score: 41,  scoreDT: 41,  scoreSC: 37  },
+        { id: 'carl03', jersey: 8,  name: 'S. Walsh',        pos: 'MID', score: 67,  scoreDT: 67,  scoreSC: 71  },
+        { id: 'carl04', jersey: 7,  name: 'M. Kennedy',      pos: 'MID', score: 54,  scoreDT: 54,  scoreSC: 58  },
+        { id: 'carl05', jersey: 22, name: 'Z. Williams',     pos: 'DEF', score: 48,  scoreDT: 48,  scoreSC: 52  },
+        { id: 'carl06', jersey: 33, name: 'C. Hollands',     pos: 'MID', score: 39,  scoreDT: 39,  scoreSC: 42  },
+        { id: 'carl07', jersey: 11, name: 'J. Motlop',       pos: 'FWD', score: 31,  scoreDT: 31,  scoreSC: 28  },
+        { id: 'carl08', jersey: 5,  name: 'M. Owies',        pos: 'FWD', score: 26,  scoreDT: 26,  scoreSC: 23  },
+        { id: 'carl09', jersey: 18, name: 'B. Silvagni',     pos: 'DEF', score: 44,  scoreDT: 44,  scoreSC: 47  },
+        { id: 'carl10', jersey: 2,  name: 'L. Young',        pos: 'DEF', score: 38,  scoreDT: 38,  scoreSC: 35  },
+        { id: 'carl11', jersey: 14, name: 'A. Cincotta',     pos: 'DEF', score: 29,  scoreDT: 29,  scoreSC: 26  },
+        { id: 'carl12', jersey: 32, name: 'T. De Koning',    pos: 'RUC', score: 71,  scoreDT: 71,  scoreSC: 76  },
+        { id: 'carl13', jersey: 25, name: 'D. Cuningham',    pos: 'FWD', score: 33,  scoreDT: 33,  scoreSC: 30  },
+        { id: 'carl14', jersey: 17, name: 'J. Newnes',       pos: 'MID', score: 45,  scoreDT: 45,  scoreSC: 48  },
+        { id: 'carl15', jersey: 26, name: 'C. Marchbank',    pos: 'DEF', score: 36,  scoreDT: 36,  scoreSC: 33  },
+        { id: 'carl16', jersey: 19, name: 'N. Newman',       pos: 'DEF', score: 52,  scoreDT: 52,  scoreSC: 55  },
+        { id: 'carl17', jersey: 4,  name: 'J. Durdin',       pos: 'FWD', score: 22,  scoreDT: 22,  scoreSC: 19  },
+        { id: 'carl18', jersey: 21, name: 'A. Saad',         pos: 'DEF', score: 41,  scoreDT: 41,  scoreSC: 38  },
+        { id: 'carl19', jersey: 6,  name: 'M. Cottrell',     pos: 'MID', score: 28,  scoreDT: 28,  scoreSC: 25  },
+        { id: 'carl20', jersey: 23, name: 'E. Curnow',       pos: 'FWD', score: 58,  scoreDT: 58,  scoreSC: 62  },
+        { id: 'carl21', jersey: 15, name: 'L. Parks',        pos: 'FWD', score: 19,  scoreDT: 19,  scoreSC: 17  },
+        { id: 'carl22', jersey: 34, name: 'B. Acres',        pos: 'MID', score: 32,  scoreDT: 32,  scoreSC: 29  },
+        { id: 'carl23', jersey: 44, name: 'T. Williamson',   pos: 'FWD', score: 15,  scoreDT: 15,  scoreSC: 13  },
+        // ── Hawthorn (teamB) — 23-man match day squad ─────────────────────
+        { id: 'haw01',  jersey: 8,  name: 'J. Sicily',       pos: 'DEF', score: 74,  scoreDT: 74,  scoreSC: 79  },
+        { id: 'haw02',  jersey: 12, name: 'J. Newcombe',     pos: 'MID', score: 83,  scoreDT: 83,  scoreSC: 88  },
+        { id: 'haw03',  jersey: 15, name: 'D. Moore (HB)',   pos: 'FWD', score: 52,  scoreDT: 52,  scoreSC: 48  },
+        { id: 'haw04',  jersey: 26, name: 'M. Lewis',        pos: 'FWD', score: 47,  scoreDT: 47,  scoreSC: 44  },
+        { id: 'haw05',  jersey: 33, name: 'F. Maginness',    pos: 'MID', score: 61,  scoreDT: 61,  scoreSC: 65  },
+        { id: 'haw06',  jersey: 7,  name: 'J. Gunston',      pos: 'FWD', score: 38,  scoreDT: 38,  scoreSC: 35  },
+        { id: 'haw07',  jersey: 5,  name: 'T. Mitchell',     pos: 'MID', score: 92,  scoreDT: 92,  scoreSC: 98  },
+        { id: 'haw08',  jersey: 11, name: 'L. Shiels',       pos: 'MID', score: 44,  scoreDT: 44,  scoreSC: 47  },
+        { id: 'haw09',  jersey: 9,  name: 'J. Ward',         pos: 'DEF', score: 35,  scoreDT: 35,  scoreSC: 32  },
+        { id: 'haw10',  jersey: 23, name: 'C. Macdonald',    pos: 'DEF', score: 29,  scoreDT: 29,  scoreSC: 26  },
+        { id: 'haw11',  jersey: 32, name: 'L. Breust',       pos: 'FWD', score: 43,  scoreDT: 43,  scoreSC: 40  },
+        { id: 'haw12',  jersey: 3,  name: 'J. Worpel',       pos: 'MID', score: 67,  scoreDT: 67,  scoreSC: 71  },
+        { id: 'haw13',  jersey: 6,  name: 'W. Day',          pos: 'DEF', score: 55,  scoreDT: 55,  scoreSC: 58  },
+        { id: 'haw14',  jersey: 18, name: 'T. Hardwick',     pos: 'DEF', score: 31,  scoreDT: 31,  scoreSC: 28  },
+        { id: 'haw15',  jersey: 22, name: 'C. Jiath',        pos: 'DEF', score: 48,  scoreDT: 48,  scoreSC: 51  },
+        { id: 'haw16',  jersey: 4,  name: 'I. Quaynor (HB)', pos: 'DEF', score: 22,  scoreDT: 22,  scoreSC: 19  },
+        { id: 'haw17',  jersey: 37, name: 'S. Frost',        pos: 'DEF', score: 27,  scoreDT: 27,  scoreSC: 24  },
+        { id: 'haw18',  jersey: 44, name: 'J. Impey',        pos: 'DEF', score: 39,  scoreDT: 39,  scoreSC: 36  },
+        { id: 'haw19',  jersey: 16, name: 'D. Howe',         pos: 'DEF', score: 33,  scoreDT: 33,  scoreSC: 30  },
+        { id: 'haw20',  jersey: 19, name: 'C. Nash',         pos: 'RUC', score: 58,  scoreDT: 58,  scoreSC: 63  },
+        { id: 'haw21',  jersey: 28, name: 'K. Hartigan',     pos: 'DEF', score: 21,  scoreDT: 21,  scoreSC: 18  },
+        { id: 'haw22',  jersey: 21, name: 'B. McEvoy',       pos: 'RUC', score: 49,  scoreDT: 49,  scoreSC: 53  },
+        { id: 'haw23',  jersey: 34, name: 'S. Butler',       pos: 'FWD', score: 18,  scoreDT: 18,  scoreSC: 15  },
       ]
     },
   ],
@@ -2244,6 +2457,8 @@ function defaultSettings() {
     soundEnabled:   false,
     soundVolume:    60,
     pollInterval:   30,
+    myTeamColour:   '#3b82f6', // default blue — user can change per-game
+    oppTeamColour:  '#ef4444', // default red  — user can change per-game
   };
 }
 
@@ -2299,15 +2514,23 @@ function activateUser(user) {
   applyProfileSettings(user);
 }
 
+/**
+ * Apply a user's saved settings to every settings UI control.
+ * Called on login, session restore, and account switch.
+ * Safe to call with a partially-formed user object — every read uses
+ * optional chaining or falls back to the defaultSettings() values.
+ *
+ * @param {Object} user  - active user record (must have a .settings property)
+ */
 function applyProfileSettings(user) {
   const s = (user && user.settings) ? user.settings : defaultSettings();
 
-  // Scoring system radio buttons
+  // ── Scoring system radio buttons ──────────────────────────────────────────
   document.querySelectorAll('[name="scoring-system"]').forEach(radio => {
     radio.checked = (radio.value === (s.scoringSystem || 'afl_fantasy'));
   });
 
-  // Overlay opacity (syncs both the settings slider and the overlay's own slider)
+  // ── Overlay opacity ───────────────────────────────────────────────────────
   const opacity = s.overlayOpacity ?? 90;
   const opacitySlider = document.getElementById('setting-opacity');
   if (opacitySlider) opacitySlider.value = opacity;
@@ -2316,11 +2539,11 @@ function applyProfileSettings(user) {
   setOverlayOpacity(opacity);
   updateOpacityDisplay(opacity);
 
-  // Overlay position dropdown
+  // ── Overlay position dropdown ─────────────────────────────────────────────
   const posEl = document.getElementById('setting-position');
   if (posEl) posEl.value = s.overlayPosition || 'top-right';
 
-  // Notification toggles
+  // ── Notification toggles ──────────────────────────────────────────────────
   const toastsEl = document.getElementById('setting-toasts');
   if (toastsEl) toastsEl.checked = s.toastsEnabled !== false; // default true
 
@@ -2335,11 +2558,11 @@ function applyProfileSettings(user) {
   if (volEl) volEl.value = volume;
   updateVolumeDisplay(volume);
 
-  // Poll interval dropdown
+  // ── Poll interval dropdown ────────────────────────────────────────────────
   const pollEl = document.getElementById('setting-poll-interval');
   if (pollEl) pollEl.value = s.pollInterval || 30;
 
-  // Restore custom teams into State
+  // ── Restore custom teams into State ──────────────────────────────────────
   State.customTeams = [...(user.customTeams || [])];
 }
 
@@ -2476,11 +2699,17 @@ const VIEW_IDS = {
   'customise':    'view-customise',
 };
 
+// Views that require an active login session.
+// Navigating to these without a session redirects to the login screen.
+const AUTH_REQUIRED_VIEWS = new Set(['team', 'settings', 'game-detail', 'customise']);
+
 function showView(viewName) {
+  // Gate auth-required views behind a login check
   if (AUTH_REQUIRED_VIEWS.has(viewName) && !State.activeUser) {
     openLoginScreen();
     return;
   }
+
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   const el = document.getElementById(VIEW_IDS[viewName] || VIEW_IDS['watch']);
   if (el) el.classList.add('active');
@@ -2628,15 +2857,38 @@ function renderWatchTab(liveGames, upcomingGames) {
    ================================================================ */
 function openGameDetail(game) {
   State.currentGame = game;
-  document.getElementById('detail-matchup').textContent = `${game.teamA.name} vs ${game.teamB.name}`;
+  document.getElementById('detail-matchup').textContent =
+    `${game.teamA.name} vs ${game.teamB.name}`;
 
-  const liveScoreEl = document.getElementById('detail-live-score');
+  const liveScoreEl  = document.getElementById('detail-live-score');
+  const statusBadge  = document.getElementById('detail-status-badge');
+  const overlayBtn   = document.getElementById('overlay-toggle-btn');
+
   if (game.status === 'live') {
-    liveScoreEl.textContent = `${game.teamA.score} – ${game.teamB.score}  |  Q${game.quarter} ${game.timeRemaining}`;
-    document.getElementById('overlay-toggle-btn').style.display = 'flex';
+    // Guard: quarter and timeRemaining may be absent if the scraper couldn't
+    // read the JS-rendered matchcentre (FanFooty serves those dynamically).
+    const quarter  = game.quarter       || '—';
+    const timeRem  = game.timeRemaining || '';
+    const timeStr  = timeRem ? ` ${timeRem}` : '';
+    liveScoreEl.textContent =
+      `${game.teamA.score} – ${game.teamB.score}  |  Q${quarter}${timeStr}`;
+
+    // Pulsing LIVE badge — reuses the .live-badge class already in CSS
+    statusBadge.innerHTML = `<span class="live-badge" aria-label="Game is live">LIVE</span>`;
+
+    overlayBtn.style.display = 'flex';
   } else {
-    liveScoreEl.textContent = `${game.date} · ${game.time}`;
-    document.getElementById('overlay-toggle-btn').style.display = 'none';
+    // Guard: upcoming games from the scraper may omit .time if FanFooty
+    // doesn't provide it for that fixture. Show em-dash rather than "undefined".
+    const date = game.date || '—';
+    const time = game.time || '—';
+    liveScoreEl.textContent = `${date} · ${time}`;
+
+    // Subdued UPCOMING label — reuses the .upcoming-badge class
+    statusBadge.innerHTML =
+      `<span class="upcoming-badge" aria-label="Upcoming game">UPCOMING</span>`;
+
+    overlayBtn.style.display = 'none';
   }
 
   showView('game-detail');
@@ -2674,22 +2926,30 @@ document.getElementById('btn-begin-overlay').addEventListener('click', () => {
 });
 
 /* ================================================================
-   CUSTOMISE PLAYERS (View 3) — dual-panel picker
+   CUSTOMISE PLAYERS (View 3) — team card system
    ================================================================
 
    ARCHITECTURE:
-   Instead of user-created named teams, we always produce exactly two
-   tracking entries in State.customTeams — one per AFL team in the
-   current game. Each entry has the same shape the overlay already
-   expects: { id, name, color, playerIds[] }.
+   State.customTeams holds an array of team entries:
+     { id, name, color, playerIds[], readonly? }
 
-   The two entries are keyed by team side ('teamA' / 'teamB') and are
-   either created fresh or reused if they already exist, so navigating
-   away and back preserves selections.
+   Three special IDs are reserved:
+     'ct_myteam'  — "My Team" card (pre-populated from user's imported team)
+     'ct_opp'     — "Opp Team" card (pre-populated from opponent import)
+     'ct_N'       — User-created custom teams (N = timestamp)
 
-   "Full Scoreboard Mode" is unchanged — it resets customTeams and
-   sets State.scoreboardMode = true so the overlay shows every player.
+   The overlay expects the same { id, name, color, playerIds[] } shape —
+   nothing downstream needs to change.
+
+   Player picker modal opens on each team card's "+ Add Players" button.
+   It shows both AFL team squads side-by-side with checkboxes; pre-checks
+   whatever players are already in the target team card.
    ================================================================ */
+
+// Which team card is currently being edited in the picker modal
+let _pickerTargetId = null;
+// Temporary selection state inside the picker (not committed until Confirm)
+let _pickerSelection = [];
 
 document.getElementById('customise-back').addEventListener('click', () => showView('game-detail'));
 
@@ -2699,7 +2959,7 @@ document.getElementById('btn-scoreboard-mode').addEventListener('click', () => {
     () => {
       State.scoreboardMode = true;
       State.customTeams = [];
-      renderPickPanels();
+      renderTeamCards();
       showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0);
     }
   );
@@ -2713,73 +2973,361 @@ document.getElementById('btn-save-customise').addEventListener('click', () => {
   showView('game-detail');
 });
 
-/**
- * Ensure State.customTeams has exactly two entries — one for teamA and
- * one for teamB in the current game — preserving any existing selections.
- * Called before rendering so the data is always in a known shape.
- */
-function ensureGameTeams() {
-  if (!State.currentGame) return;
-  const { teamA, teamB } = State.currentGame;
-
-  ['teamA', 'teamB'].forEach(side => {
-    const afl = State.currentGame[side]; // { name, color, ... }
-    const existing = State.customTeams.find(t => t.id === `game_${side}`);
-    if (!existing) {
-      State.customTeams.push({
-        id:        `game_${side}`,
-        name:      afl.name,
-        color:     afl.color,
-        playerIds: [],
-      });
-    } else {
-      // Keep selections; refresh name/colour in case game data changed
-      existing.name  = afl.name;
-      existing.color = afl.color;
-    }
+document.getElementById('btn-add-custom-team').addEventListener('click', () => {
+  const customCount = State.customTeams.filter(t => t.id.startsWith('ct_')).length;
+  const totalCount  = State.customTeams.length;
+  if (totalCount >= 5) {
+    showToast('⚠️', 'Maximum reached', 'Remove a team to add another (max 5 total)', 0);
+    return;
+  }
+  const idx = customCount + 1;
+  const colors = ['#a855f7','#f59e0b','#10b981','#f43f5e','#6366f1'];
+  State.customTeams.push({
+    id:        `ct_${Date.now()}`,
+    name:      `Team ${idx + 2}`, // 1=My Team, 2=Opp, then 3, 4, 5
+    color:     colors[customCount % colors.length],
+    playerIds: [],
+    readonly:  false,
   });
+  renderTeamCards();
+});
 
-  // Remove any stale entries that don't belong to the current game
-  // (e.g. leftover from a different game in the same session)
-  State.customTeams = State.customTeams.filter(t =>
-    t.id === 'game_teamA' || t.id === 'game_teamB'
-  );
+// Player picker modal wiring
+document.getElementById('modal-picker-close').addEventListener('click',  () => closeModal('modal-player-picker'));
+document.getElementById('modal-picker-cancel').addEventListener('click', () => closeModal('modal-player-picker'));
+document.getElementById('modal-picker-confirm').addEventListener('click', () => {
+  // Commit _pickerSelection into the target team card
+  const team = State.customTeams.find(t => t.id === _pickerTargetId);
+  if (team) {
+    team.playerIds = [..._pickerSelection];
+  }
+  closeModal('modal-player-picker');
+  renderTeamCards();
+});
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ensure the reserved "My Team" and "Opp Team" cards exist in
+ * State.customTeams, pre-populated from the user's data.
+ * Preserves any existing custom teams created in this session.
+ */
+function ensureReservedCards() {
+  if (!State.currentGame) return;
+  const user = State.activeProfile;
+  const s    = user?.settings || {};
+
+  // ── My Team card ──────────────────────────────────────────────────────────
+  const allGamePlayerIds = (State.currentGame.players || []).map(p => p.id);
+  if (!State.customTeams.find(t => t.id === 'ct_myteam')) {
+    // Pre-select players from the user's imported team who appear in this game.
+    // Match by name (formatted) since jersey lookup may not have run yet.
+    const userTeamNames = new Set((user?.team || []).map(p => formatPlayerName(p.name)));
+    const matchingIds   = (State.currentGame.players || [])
+      .filter(p => userTeamNames.has(formatPlayerName(p.name)))
+      .map(p => p.id);
+
+    State.customTeams.unshift({
+      id:        'ct_myteam',
+      name:      'My Team',
+      color:     s.myTeamColour || '#3b82f6',
+      playerIds: matchingIds,
+      readonly:  false,
+    });
+  }
+
+  // ── Opp Team card — only if opponent team is imported ─────────────────────
+  const oppTeam   = user?.opponentTeam || [];
+  const hasOpp    = oppTeam.length > 0;
+  const hasOppCard = !!State.customTeams.find(t => t.id === 'ct_opp');
+
+  if (hasOpp && !hasOppCard) {
+    const oppNames    = new Set(oppTeam.map(n => formatPlayerName(n)));
+    const oppMatchIds = (State.currentGame.players || [])
+      .filter(p => oppNames.has(formatPlayerName(p.name)))
+      .map(p => p.id);
+
+    // Insert after My Team card
+    const myIdx = State.customTeams.findIndex(t => t.id === 'ct_myteam');
+    State.customTeams.splice(myIdx + 1, 0, {
+      id:        'ct_opp',
+      name:      'Opp Team',
+      color:     s.oppTeamColour || '#ef4444',
+      playerIds: oppMatchIds,
+      readonly:  false,
+    });
+  }
+
+  // Remove opp card if opponent was cleared
+  if (!hasOpp) {
+    State.customTeams = State.customTeams.filter(t => t.id !== 'ct_opp');
+  }
 }
 
 /**
- * Render the two side-by-side pick panels.
- * Each panel lists the players for one AFL team and uses checkboxes
- * to add/remove them from that team's tracking entry.
+ * Render all team cards into #team-cards-wrap.
  */
-function renderPickPanels() {
-  const wrap = document.getElementById('pick-panels-wrap');
+function renderTeamCards() {
+  const wrap  = document.getElementById('team-cards-wrap');
+  const label = document.getElementById('team-card-count-label');
   wrap.innerHTML = '';
 
   if (!State.currentGame) {
-    wrap.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+    wrap.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🏉</div>
       <p>No game selected. Go back and tap a live game card first.</p>
     </div>`;
     return;
   }
 
-  ensureGameTeams();
+  ensureReservedCards();
+
+  const count = State.customTeams.length;
+  label.textContent = `${count} / 5 teams`;
+
+  State.customTeams.forEach(team => {
+    const card = buildTeamCard(team);
+    wrap.appendChild(card);
+  });
+}
+
+/**
+ * Build a single team card DOM element.
+ * @param {Object} team - { id, name, color, playerIds[], readonly? }
+ * @returns {HTMLElement}
+ */
+function buildTeamCard(team) {
+  const allPlayers = State.currentGame?.players || [];
+  const players    = allPlayers.filter(p => team.playerIds.includes(p.id));
+
+  const card = document.createElement('div');
+  card.className = 'team-card';
+  card.dataset.teamId = team.id;
+
+  /* ── Header ──────────────────────────────────────────────────────────── */
+  const header = document.createElement('div');
+  header.className = 'team-card-header';
+  header.style.borderLeftColor = team.color;
+
+  // Colour picker dot
+  const colourBtn = document.createElement('div');
+  colourBtn.className = 'team-card-colour-btn';
+  colourBtn.style.background = team.color;
+  colourBtn.title = 'Change colour';
+  const colourInput = document.createElement('input');
+  colourInput.type  = 'color';
+  colourInput.value = team.color;
+  colourInput.setAttribute('aria-label', 'Team colour');
+  colourInput.addEventListener('input', e => {
+    team.color = e.target.value;
+    colourBtn.style.background   = team.color;
+    header.style.borderLeftColor = team.color;
+    nameEl.style.color           = team.color;
+    // Persist colour preference for reserved cards
+    if (team.id === 'ct_myteam' && State.activeProfile) {
+      State.activeProfile.settings.myTeamColour = team.color;
+      saveCurrentProfile();
+    }
+    if (team.id === 'ct_opp' && State.activeProfile) {
+      State.activeProfile.settings.oppTeamColour = team.color;
+      saveCurrentProfile();
+    }
+  });
+  colourBtn.appendChild(colourInput);
+
+  // Team name (editable input)
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'team-card-name';
+  const nameEl = document.createElement('input');
+  nameEl.type  = 'text';
+  nameEl.value = team.name;
+  nameEl.style.color = team.color;
+  nameEl.setAttribute('aria-label', 'Team name');
+  nameEl.addEventListener('input', e => { team.name = e.target.value; });
+  nameWrap.appendChild(nameEl);
+
+  // Count badge
+  const countBadge = document.createElement('span');
+  countBadge.className = 'team-card-count';
+  countBadge.textContent = `${players.length} players`;
+
+  // Delete button (not shown for My Team / Opp Team)
+  const headerRight = document.createElement('div');
+  headerRight.style.cssText = 'display:flex;gap:6px;align-items:center;flex-shrink:0;';
+  headerRight.appendChild(countBadge);
+  if (team.id !== 'ct_myteam' && team.id !== 'ct_opp') {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-ghost btn-sm';
+    delBtn.style.cssText = 'padding:3px 8px;font-size:0.7rem;color:var(--text-muted);';
+    delBtn.textContent = '✕';
+    delBtn.setAttribute('aria-label', `Remove ${team.name}`);
+    delBtn.addEventListener('click', () => {
+      State.customTeams = State.customTeams.filter(t => t.id !== team.id);
+      renderTeamCards();
+    });
+    headerRight.appendChild(delBtn);
+  }
+
+  header.appendChild(colourBtn);
+  header.appendChild(nameWrap);
+  header.appendChild(headerRight);
+  card.appendChild(header);
+
+  /* ── Body: player list ──────────────────────────────────────────────── */
+  const body = document.createElement('div');
+  body.className = 'team-card-body';
+
+  // Special empty state for My Team with no matching players
+  if (team.id === 'ct_myteam' && players.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'team-card-empty';
+    empty.textContent = 'None of your players are in this game';
+    body.appendChild(empty);
+  } else if (players.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'team-card-empty';
+    empty.textContent = 'No players added yet — use the button below';
+    body.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'team-card-player-list';
+    players.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'team-card-player-row';
+      row.innerHTML = `
+        <span class="team-card-jersey">${p.jersey || '–'}</span>
+        <span class="team-card-player-name">${escHtml(formatPlayerName(p.name))}</span>
+        <span class="text-muted text-sm">${p.pos || ''}</span>
+      `;
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'team-card-remove';
+      removeBtn.setAttribute('aria-label', `Remove ${formatPlayerName(p.name)}`);
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        team.playerIds = team.playerIds.filter(id => id !== p.id);
+        renderTeamCards();
+      });
+      row.appendChild(removeBtn);
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  card.appendChild(body);
+
+  /* ── Footer: + Add Players ─────────────────────────────────────────── */
+  const footer = document.createElement('div');
+  footer.className = 'team-card-footer';
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn btn-ghost btn-sm';
+  addBtn.textContent = '+ Add Players';
+  addBtn.addEventListener('click', () => openPlayerPicker(team));
+  footer.appendChild(addBtn);
+
+  // Opp Team: also show import opponent option
+  if (team.id === 'ct_opp') {
+    const importBtn = document.createElement('button');
+    importBtn.className = 'btn btn-ghost btn-sm';
+    importBtn.textContent = '📥 Import Opponent';
+    importBtn.addEventListener('click', () => {
+      const panel = document.getElementById('opp-import-panel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    footer.appendChild(importBtn);
+  }
+
+  card.appendChild(footer);
+
+  // Opponent import sub-panel (only rendered under Opp Team card)
+  if (team.id === 'ct_opp') {
+    const oppPanel = buildOppImportPanel(team);
+    card.appendChild(oppPanel);
+  }
+
+  return card;
+}
+
+/**
+ * Build the opponent import panel for the Opp Team card.
+ * Mirrors the Team tab import UI (URL + paste + screenshot).
+ */
+function buildOppImportPanel(team) {
+  const panel = document.createElement('div');
+  panel.id = 'opp-import-panel';
+  panel.style.display = 'none';
+  panel.innerHTML = `
+    <div style="padding:16px;border-top:1px solid var(--border);">
+      <div class="form-group" style="margin-bottom:12px;">
+        <label for="opp-import-text" style="margin-bottom:4px;display:block;">Paste opponent player names (one per line)</label>
+        <textarea id="opp-import-text" rows="5"
+          placeholder="e.g.&#10;P. Dangerfield&#10;M. Bontempelli&#10;L. Neale"
+          style="width:100%;"></textarea>
+      </div>
+      <div class="flex gap-8" style="flex-wrap:wrap;">
+        <button class="btn btn-primary btn-sm" id="btn-opp-import-confirm">Import</button>
+        <button class="btn btn-ghost btn-sm" id="btn-opp-import-cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  // Wire up after appending (IDs are unique per render)
+  setTimeout(() => {
+    const confirmBtn = document.getElementById('btn-opp-import-confirm');
+    const cancelBtn  = document.getElementById('btn-opp-import-cancel');
+    const textArea   = document.getElementById('opp-import-text');
+    if (!confirmBtn || !textArea) return;
+
+    cancelBtn?.addEventListener('click', () => { panel.style.display = 'none'; });
+    confirmBtn.addEventListener('click', () => {
+      const names = textArea.value.split('\n').map(s => s.trim()).filter(Boolean);
+      if (!names.length) return;
+
+      if (State.activeProfile) {
+        State.activeProfile.opponentTeam = names;
+        saveCurrentProfile();
+      }
+
+      // Match names against game players
+      const nameSet = new Set(names.map(n => formatPlayerName(n)));
+      const matchIds = (State.currentGame?.players || [])
+        .filter(p => nameSet.has(formatPlayerName(p.name)))
+        .map(p => p.id);
+
+      team.playerIds = matchIds;
+      panel.style.display = 'none';
+      renderTeamCards();
+      showToast('📋', 'Opponent imported', `${matchIds.length} players matched in this game`, 0);
+    });
+  }, 0);
+
+  return panel;
+}
+
+/**
+ * Open the player picker modal for a given team card.
+ * Shows both AFL team squads side-by-side with the team card's
+ * current selections pre-checked.
+ * @param {Object} team - the team card being edited
+ */
+function openPlayerPicker(team) {
+  _pickerTargetId  = team.id;
+  _pickerSelection = [...team.playerIds]; // work on a copy until Confirm
+
+  document.getElementById('modal-picker-title').textContent = `Add Players — ${team.name}`;
+
+  const wrap = document.getElementById('picker-panels-wrap');
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) { openModal('modal-player-picker'); return; }
 
   ['teamA', 'teamB'].forEach(side => {
     const afl     = State.currentGame[side];
-    const entry   = State.customTeams.find(t => t.id === `game_${side}`);
-    // Players belonging to this AFL team. The game's .players array mixes
-    // both teams; we split them by whether they appear in each team's side.
-    // FanFooty data keeps teamA and teamB players as separate arrays when
-    // available; for the merged mock format we split them down the middle.
     const players = getPlayersForSide(side);
 
     const panel = document.createElement('div');
     panel.className = 'pick-panel';
-    panel.setAttribute('role', 'region');
-    panel.setAttribute('aria-label', `${afl.name} players`);
 
-    // ── Panel header ─────────────────────────────────────────────────────
+    // Panel header
     const header = document.createElement('div');
     header.className = 'pick-panel-header';
     header.style.borderLeftColor = afl.color;
@@ -2791,183 +3339,133 @@ function renderPickPanels() {
 
     const countBadge = document.createElement('span');
     countBadge.className = 'pick-panel-count';
-    countBadge.id = `pick-count-${side}`;
-    countBadge.textContent = `${entry.playerIds.length} / ${players.length}`;
+    const updateCount = () => {
+      const n = players.filter(p => _pickerSelection.includes(p.id)).length;
+      countBadge.textContent = `${n} / ${players.length}`;
+    };
+    updateCount();
 
     header.appendChild(title);
     header.appendChild(countBadge);
     panel.appendChild(header);
 
-    // ── Scrollable player list ────────────────────────────────────────────
+    // Scrollable list
     const list = document.createElement('div');
     list.className = 'pick-list';
-    list.setAttribute('role', 'listbox');
-    list.setAttribute('aria-multiselectable', 'true');
-    list.setAttribute('aria-label', `${afl.name} player list`);
 
-    // "Select all / deselect all" toggle row
+    // Select all row
     const allRow = document.createElement('div');
     allRow.className = 'pick-select-all';
-    allRow.setAttribute('role', 'button');
     allRow.tabIndex = 0;
-    allRow.setAttribute('aria-label', 'Toggle select all players');
-
+    allRow.setAttribute('role', 'button');
+    allRow.setAttribute('aria-label', 'Toggle select all');
     const allCheck = document.createElement('div');
     allCheck.className = 'pick-checkbox';
-
     const allLabel = document.createElement('span');
     allLabel.textContent = 'Select all';
-
     allRow.appendChild(allCheck);
     allRow.appendChild(allLabel);
     list.appendChild(allRow);
 
-    // Individual player rows
+    // Player rows
     players.forEach(p => {
-      const row = buildPlayerRow(p, entry, side, countBadge, allCheck, players);
+      const row = document.createElement('div');
+      const isSel = _pickerSelection.includes(p.id);
+      row.className = `pick-row${isSel ? ' selected' : ''}`;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(isSel));
+      row.tabIndex = 0;
+
+      const cb = document.createElement('div');
+      cb.className = 'pick-checkbox';
+      const jersey = document.createElement('span');
+      jersey.className = 'pick-jersey';
+      jersey.textContent = p.jersey || '–';
+      const name = document.createElement('span');
+      name.className = 'pick-name';
+      name.textContent = formatPlayerName(p.name);
+      const pos = document.createElement('span');
+      pos.className = 'pick-pos';
+      pos.textContent = p.pos || '';
+
+      row.appendChild(cb); row.appendChild(jersey);
+      row.appendChild(name); row.appendChild(pos);
+
+      const toggle = () => {
+        const idx = _pickerSelection.indexOf(p.id);
+        if (idx === -1) {
+          _pickerSelection.push(p.id);
+          row.classList.add('selected');
+          row.setAttribute('aria-selected', 'true');
+        } else {
+          _pickerSelection.splice(idx, 1);
+          row.classList.remove('selected');
+          row.setAttribute('aria-selected', 'false');
+        }
+        updateCount();
+        const allSel = players.every(pl => _pickerSelection.includes(pl.id));
+        allCheck.style.background  = allSel ? 'var(--accent-blue)' : '';
+        allCheck.style.borderColor = allSel ? 'var(--accent-blue)' : '';
+      };
+      row.addEventListener('click', toggle);
+      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }});
       list.appendChild(row);
     });
 
-    // Wire up "select all" toggle after rows exist
+    // Select-all toggle
     const toggleAll = () => {
-      const allSelected = players.every(p => entry.playerIds.includes(p.id));
-      if (allSelected) {
-        // Deselect all
-        players.forEach(p => {
-          const idx = entry.playerIds.indexOf(p.id);
-          if (idx !== -1) entry.playerIds.splice(idx, 1);
-        });
-      } else {
-        // Select all that aren't already in
-        players.forEach(p => {
-          if (!entry.playerIds.includes(p.id)) entry.playerIds.push(p.id);
-        });
-      }
-      // Re-render all rows to sync visual state
-      renderPickPanels();
+      const allSel = players.every(p => _pickerSelection.includes(p.id));
+      players.forEach(p => {
+        const idx = _pickerSelection.indexOf(p.id);
+        if (allSel && idx !== -1) _pickerSelection.splice(idx, 1);
+        else if (!allSel && idx === -1) _pickerSelection.push(p.id);
+      });
+      // Re-render by re-calling openPlayerPicker is too heavy;
+      // instead update each row's visual state directly
+      list.querySelectorAll('.pick-row').forEach((row, i) => {
+        const isSel = _pickerSelection.includes(players[i]?.id);
+        row.classList.toggle('selected', isSel);
+        row.setAttribute('aria-selected', String(isSel));
+      });
+      const nowAll = players.every(p => _pickerSelection.includes(p.id));
+      allCheck.style.background  = nowAll ? 'var(--accent-blue)' : '';
+      allCheck.style.borderColor = nowAll ? 'var(--accent-blue)' : '';
+      updateCount();
     };
     allRow.addEventListener('click', toggleAll);
-    allRow.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAll(); }
-    });
+    allRow.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAll(); }});
 
     panel.appendChild(list);
     wrap.appendChild(panel);
   });
-}
 
-/**
- * Build a single player row element for a pick panel.
- *
- * @param {Object}  p           - player object { id, jersey, name, pos }
- * @param {Object}  entry       - the customTeams entry for this side
- * @param {string}  side        - 'teamA' | 'teamB'
- * @param {Element} countBadge  - the panel count badge to update on toggle
- * @param {Element} allCheck    - the "select all" checkbox to update on toggle
- * @param {Array}   allPlayers  - full player list for this side (for all-check sync)
- * @returns {HTMLElement}
- */
-function buildPlayerRow(p, entry, side, countBadge, allCheck, allPlayers) {
-  const isSelected = entry.playerIds.includes(p.id);
-
-  const row = document.createElement('div');
-  row.className = `pick-row${isSelected ? ' selected' : ''}`;
-  row.setAttribute('role', 'option');
-  row.setAttribute('aria-selected', String(isSelected));
-  row.setAttribute('aria-label', `${p.name}, jersey ${p.jersey || '?'}`);
-  row.tabIndex = 0;
-  row.dataset.playerId = p.id;
-
-  const checkbox = document.createElement('div');
-  checkbox.className = 'pick-checkbox';
-  checkbox.setAttribute('aria-hidden', 'true');
-
-  const jersey = document.createElement('span');
-  jersey.className = 'pick-jersey';
-  jersey.textContent = p.jersey ? `${p.jersey}` : '–';
-
-  const name = document.createElement('span');
-  name.className = 'pick-name';
-  name.textContent = formatPlayerName(p.name);
-
-  const pos = document.createElement('span');
-  pos.className = 'pick-pos';
-  pos.textContent = p.pos || '';
-
-  row.appendChild(checkbox);
-  row.appendChild(jersey);
-  row.appendChild(name);
-  row.appendChild(pos);
-
-  const toggle = () => {
-    const idx = entry.playerIds.indexOf(p.id);
-    if (idx === -1) {
-      entry.playerIds.push(p.id);
-      row.classList.add('selected');
-      row.setAttribute('aria-selected', 'true');
-    } else {
-      entry.playerIds.splice(idx, 1);
-      row.classList.remove('selected');
-      row.setAttribute('aria-selected', 'false');
-    }
-    // Update the panel count badge
-    const total = allPlayers.length;
-    countBadge.textContent = `${entry.playerIds.length} / ${total}`;
-    // Sync the "select all" checkbox visual state
-    const allNowSelected = allPlayers.every(pl => entry.playerIds.includes(pl.id));
-    allCheck.style.background    = allNowSelected ? 'var(--accent-blue)' : '';
-    allCheck.style.borderColor   = allNowSelected ? 'var(--accent-blue)' : '';
-  };
-
-  row.addEventListener('click', toggle);
-  row.addEventListener('keydown', e => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
-  });
-
-  return row;
+  openModal('modal-player-picker');
 }
 
 /**
  * Return the player list for one side of the current game.
- *
- * When game data comes from the scraper, each team may carry its own
- * players array (game.teamAPlayers / game.teamBPlayers). The mock data
- * uses a single merged game.players array; in that case we split them
- * by position in the array — the first half goes to teamA, second to teamB.
- *
- * @param {'teamA'|'teamB'} side
- * @returns {Object[]} array of player objects
+ * No slice/filter — always returns the full squad.
  */
 function getPlayersForSide(side) {
   const g = State.currentGame;
   if (!g) return [];
-
-  // Prefer explicit side arrays (live scraper output)
   if (g.teamAPlayers && g.teamBPlayers) {
     return side === 'teamA' ? g.teamAPlayers : g.teamBPlayers;
   }
-
-  // Fallback: split the merged players array down the middle.
-  // Mock data interleaves the two teams so we sort by whether the player's
-  // id starts with the respective team letter, or simply halve the array.
   const all = g.players || [];
   if (all.length === 0) return [];
-
-  // Try splitting by team name embedded in player id (e.g. 'p01'..'p05' vs 'p06'..'p10')
-  // If ids carry no team info, split by position in array.
+  // Split by position in the players array; ids like rich01-rich23 / coll01-coll23
+  // mean the first half are teamA and the second half are teamB.
   const half = Math.ceil(all.length / 2);
   return side === 'teamA' ? all.slice(0, half) : all.slice(half);
 }
 
-/* Wire renderPickPanels into the btn-customise-players click handler.
-   The original call was renderCustomTeams() — we replace that here
-   without touching the handler's surrounding code. */
+/* btn-customise-players is wired here */
 document.getElementById('btn-customise-players').addEventListener('click', () => {
-  // Reset scoreboardMode when entering the pick view deliberately
   State.scoreboardMode = false;
   showView('customise');
-  renderPickPanels();
-});
+  renderTeamCards();
+});;
 
 /* ================================================================
    OVERLAY (View 4)
@@ -3501,7 +3999,7 @@ document.getElementById('screenshot-file-input').addEventListener('change', asyn
                 type: 'image',
                 source: {
                   type: 'base64',
-                  media_type: file.type || 'image/jpeg',
+                  media_type: 'image/jpeg', // canvas always exports JPEG regardless of original format
                   data: base64Data,
                 },
               },
@@ -3546,7 +4044,9 @@ document.getElementById('screenshot-file-input').addEventListener('change', asyn
   } catch (err) {
     console.warn('[FootyOverlay] Screenshot import failed:', err.message);
     screenshotSetError(
-      'Couldn\'t read this screenshot — try cropping closer to the player list.'
+      err.message.includes('cannot read') || err.message.includes('400')
+        ? 'Screenshot quality too low — try cropping closer to the player names and retrying.'
+        : 'Couldn\'t read this screenshot — try cropping closer to the player list.'
     );
     return;
   }
@@ -3619,11 +4119,43 @@ document.getElementById('btn-screenshot-select-all').addEventListener('click', (
  * @param {File} file
  * @returns {Promise<string>}
  */
+/**
+ * Read a File, draw it onto a canvas capped at 1200px on the longest side,
+ * then export as JPEG at 0.92 quality. This normalises resolution and encoding
+ * across browsers — Chrome in particular handles file compression differently
+ * to Safari and the Claude preview, which caused crop/quality errors when sending
+ * full-resolution images directly to the API.
+ *
+ * @param {File} file
+ * @returns {Promise<string>} base64-encoded JPEG (data portion only, no prefix)
+ */
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload  = () => resolve(reader.result.split(',')[1]); // strip "data:...;base64,"
     reader.onerror = () => reject(new Error('FileReader failed'));
+    reader.onload = evt => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Image decode failed'));
+      img.onload = () => {
+        // Cap longest side at 1200px; maintain aspect ratio
+        const MAX = 1200;
+        let w = img.naturalWidth;
+        let h = img.naturalHeight;
+        if (w > MAX || h > MAX) {
+          if (w >= h) { h = Math.round(h * MAX / w); w = MAX; }
+          else        { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width  = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        // Export as JPEG at 0.92 quality — consistent across all browsers
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        resolve(dataUrl.split(',')[1]); // strip "data:image/jpeg;base64,"
+      };
+      img.src = evt.target.result;
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -3709,6 +4241,10 @@ function screenshotShowConfirm(names) {
 
 document.getElementById('btn-confirm-import-team').addEventListener('click', async () => {
   const text = document.getElementById('team-import-text').value.trim();
+  // Guard: both text and an active session are required.
+  // The null check here is belt-and-suspenders — showView() now prevents
+  // reaching this tab without a session, but a direct URL or stale DOM
+  // state could still trigger the handler.
   if (!text || !State.activeProfile) {
     if (!State.activeProfile) openLoginScreen();
     return;
