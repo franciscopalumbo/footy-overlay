@@ -1804,11 +1804,11 @@
         <div class="radio-group">
           <div class="radio-option">
             <input type="radio" name="scoring-system" id="scoring-afl" value="afl_fantasy" />
-            <label for="scoring-afl">🏆 AFL Fantasy</label>
+            <label for="scoring-afl" class="logo-label">🏆 AFL Fantasy</label>
           </div>
           <div class="radio-option">
             <input type="radio" name="scoring-system" id="scoring-sc" value="supercoach" />
-            <label for="scoring-sc">🐸 SuperCoach</label>
+            <label for="scoring-sc" class="logo-label">🧠 SuperCoach</label>
           </div>
         </div>
       </div>
@@ -1899,7 +1899,7 @@
         <div class="settings-section-title">Danger Zone</div>
         <p class="text-sm text-muted mb-16">This will delete all locally stored data for your account — teams, settings, and preferences. This cannot be undone.</p>
         <button class="btn btn-danger" id="btn-clear-data" tabindex="0">
-          🗑 Clear All Data
+          Clear All Data
         </button>
       </div>
 
@@ -2827,8 +2827,8 @@ function renderGameCard(game) {
         </div>
       </div>
       <div class="game-meta">
-        <span>🏟 ${escHtml(game.venue)}</span>
-        ${(!isLive && !isFinal && game.time) ? `<span>🕐 ${escHtml(game.time)}</span>` : ''}
+        <span>${escHtml(game.venue)}</span>
+        ${(!isLive && !isFinal && game.time) ? `<span>${escHtml(game.time)}</span>` : ''}
         ${isFinal ? `<span style="color:var(--accent-alert);font-size:0.72rem;font-weight:600;">${game.teamA.goals}.${game.teamA.behinds}.${game.teamA.score} def${game.teamB.score >= game.teamA.score ? 'd by' : ''} ${game.teamB.goals}.${game.teamB.behinds}.${game.teamB.score}</span>` : ''}
       </div>
     </div>
