@@ -7,23 +7,14 @@
  *
  *   We use the native fetch() global, which is built into Node.js 18+ and
  *   therefore available in Netlify Functions without any package install.
- *   No node-fetch dependency — that package's v3 line is ESM-only and v2
- *   pulls in a transitive `undici` that crashes on Node 18 with
- *   "ReferenceError: File is not defined". Native fetch sidesteps both.
  *
  *   We import from `cheerio/slim`, NOT the default `cheerio` entry. The
  *   default entry eagerly requires undici v7 (for cheerio.fromURL) which
- *   uses Node 20+ globals and crashes on Node 18 at module load time —
- *   even if we never call fromURL. The slim entry has identical parsing
- *   and traversal APIs (load, $, find, each, closest, ...) without the
- *   HTTP machinery we don't use. This is a documented, supported export
- *   path published by the cheerio maintainers for exactly this scenario.
+ *   uses Node 20+ globals and crashes on Node 18 at module load time.
  *
  * ENVIRONMENT VARIABLES:
  *   FANFOOTY_LIVE=true   — perform real scraping. Anything else (or unset)
- *                          serves MOCK_RESPONSE. Default-off is intentional:
- *                          local dev and accidentally-deployed previews
- *                          should never hammer FanFooty.
+ *                          serves MOCK_RESPONSE.
  *
  * ENDPOINT (via netlify.toml redirect):
  *   GET /api/fanfooty-proxy
@@ -31,76 +22,74 @@
  * RESPONSE SHAPE (top-level keys are guaranteed to exist; values may be []):
  *   {
  *     round:         number,
- *     liveGames:     Game[],   // games kicked off within the last ~3.5h with scores
+ *     liveGames:     Game[],   // games kicked off within the last ~3.5h
  *     upcomingGames: Game[],   // games whose kickoff is still in the future
- *     pastGames:     Game[],   // games kicked off >3.5h ago with scores
+ *     pastGames:     Game[],   // games kicked off >3.5h ago
  *     _fallback:     boolean,  // optional: true when mock served due to error
  *     _error:        string,   // optional: error summary when _fallback=true
  *   }
  *
  * ─────────────────────────────────────────────────────────────
- * ARCHITECTURE — LAYER 1 (HTML scraping only):
+ * ARCHITECTURE — verified against live Round 8 data on 2 May 2026:
  *
- *   (A) /game/roundscores.php — server-rendered. Source for current-round
- *       per-player DT (AFL Fantasy) and SC (SuperCoach) scores. NO raw stat
- *       counts (kicks/handballs/marks/etc), NO quarter/time, NO jersey/pos.
- *       Those fields are populated as null and the frontend renders "—".
+ *   FIXTURE.PHP is the source of truth for which games exist in the round.
+ *   It is one big <table> covering the whole season. Each round has a
+ *   header row "Round N | Date | Opponents | Ground | Time (AET)" followed
+ *   by game rows. Game rows have columns:
+ *     [Day]  [Date]  [Team A vs Team B]  [Ground]  [Time]
+ *   When consecutive rows share the same day+date, BOTH the day and date
+ *   cells are blank — not just the day cell. We track lastDay/lastDate
+ *   across rows to fill these in.
  *
- *   (B) /game/fixture.php — server-rendered. Source for venue, kickoff date
- *       and time, and round number for upcoming and past games. Also used
- *       to classify scored games as 'live' vs 'final' by comparing kickoff
- *       to current Melbourne local time.
+ *   ROUNDSCORES.PHP enriches scored games with per-player DT/SC scores.
+ *   Each game is rendered as its OWN <table>, NOT as rows-after-header
+ *   inside one shared table. Inside each game's table, every cell is in
+ *   one logical block — cells flow as:
  *
- *   (C) / (homepage) — server-rendered. Source for canonical /live/ URLs
- *       (used as `liveUrl` on each game) and team abbreviations as they
- *       appear in FanFooty's own short-form (COL, HAW, WBD, etc).
+ *     [TeamA: G.B.T] [Player] [DT] [SC] [Y!] [FR] [GS] [blank]
+ *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
+ *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
+ *     ... more team A players ...
+ *     [&nbsp;]
+ *     [TeamB: G.B.T] [Player] [DT] [SC] [Y!] [FR] [GS] [blank]
+ *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
+ *     ... more team B players ...
  *
- *   The JS-rendered matchcentre at /live/{year}/{id}-{slug}.html is NOT
- *   scraped — Cheerio cannot see its data. Layer 2 will replace this when
- *   we discover the underlying JSON polling endpoint.
+ *   We parse cell-by-cell within each <table>, anchoring on team-header
+ *   cells (regex match on text) and reading the 5 numeric cells after each
+ *   player name link. We do NOT depend on <tr> structure.
+ *
+ *   HOMEPAGE renders the current round as a list of <a> elements pointing
+ *   to /live/{year}/{id}-{slug}.html. Link text contains kickoff datetime,
+ *   two abbreviations on separate lines, and (for completed/in-progress
+ *   games) two scores. We use this to recover FanFooty's canonical numeric
+ *   game IDs and the official /live/ URLs.
+ *
+ *   The matchcentre at /live/{year}/{id}-{slug}.html is JS-rendered. We
+ *   do NOT scrape it. quarter, timeRemaining, jersey, position, and raw
+ *   stats stay null. Layer 2 (planned) will hit the underlying JSON
+ *   polling endpoint once we capture it from a live game with DevTools.
  *
  * ─────────────────────────────────────────────────────────────
- * RESILIENCE STRATEGY:
- *   · Every selector is wrapped in try/catch. Failed game/player rows are
- *     skipped without aborting.
- *   · Top-level fetch failures fall back to MOCK_RESPONSE so the frontend
- *     always receives a valid payload.
- *   · 30-second module-scoped cache prevents pounding FanFooty when
- *     multiple users (or the polling client) hit the function in quick
- *     succession on a warm container.
- *   · 9-second fetch timeout leaves headroom under Netlify's 10s limit.
+ * RESILIENCE:
+ *   Every parser is wrapped in try/catch. Failed games/players are
+ *   skipped without aborting. Top-level fetch failures fall back to
+ *   MOCK_RESPONSE so the frontend always receives a valid payload.
+ *   30s module-scoped cache prevents pounding FanFooty.
  * ─────────────────────────────────────────────────────────────
  */
 
 const cheerio = require('cheerio/slim');
-// fetch() is a Node 18+ global — no import needed.
-//
-// Note: we use cheerio/slim rather than the default cheerio entry. The full
-// entry point eagerly require()s undici (cheerio's HTTP client for its
-// fromURL() helper) at module load time. undici v7 uses Node 20+ globals
-// like File and crashes on Node 18 with "ReferenceError: File is not
-// defined". The slim entry exposes the same parsing/traversal API
-// (load, $, find, each, closest, etc) without the URL-loading machinery —
-// which we don't need anyway because we do our own fetching.
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
 const BASE_URL         = 'https://www.fanfooty.com.au';
-const FETCH_TIMEOUT_MS = 9000; // Netlify hard limit is 10s; leave 1s headroom
-const CACHE_TTL_MS     = 30 * 1000; // 30 seconds
+const FETCH_TIMEOUT_MS = 9000;
+const CACHE_TTL_MS     = 30 * 1000;
 
-/**
- * Window (in milliseconds) after kickoff during which a scored game is
- * considered "live" rather than "final". AFL games run ~2h with breaks;
- * 3.5h covers stoppages, overtime, and the post-siren window where the
- * game still feels live to viewers.
- */
+/** Window after kickoff during which a game is "live" rather than "final". */
 const LIVE_WINDOW_MS = 3.5 * 60 * 60 * 1000;
 
-/**
- * Browser-like request headers. Identifies us politely while still looking
- * like a real client — FanFooty serves different markup to obvious bots.
- */
 const BROWSER_HEADERS = {
   'User-Agent':      'Mozilla/5.0 (FootyOverlay/1.0; +https://github.com/franciscopalumbo/footy-overlay) Chrome/124.0.0.0',
   'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -110,36 +99,25 @@ const BROWSER_HEADERS = {
 
 // ─── TEAM METADATA ────────────────────────────────────────────────────────────
 
-/**
- * Canonical team registry. Each entry maps a club to:
- *   key      — internal canonical key (lowercase, no spaces)
- *   names    — list of strings FanFooty might use (roundscores, fixture, homepage)
- *   abbr     — short code displayed in the UI
- *   color    — left-border accent in the frontend's game cards
- *
- * Keep this comprehensive. parseTeamName() does case-insensitive matching
- * across all `names` entries so variations like "North Melbourne",
- * "Kangaroos", and "NM" all resolve to the same canonical record.
- */
 const TEAMS = [
-  { key: 'adelaide',     names: ['Adelaide', 'Adelaide Crows', 'Crows', 'ADE'],          abbr: 'ADE',  color: '#002b5c' },
-  { key: 'brisbane',     names: ['Brisbane', 'Brisbane Lions', 'Lions', 'BRI', 'BL'],    abbr: 'BRI',  color: '#a30046' },
-  { key: 'carlton',      names: ['Carlton', 'Carlton Blues', 'Blues', 'CAR'],            abbr: 'CAR',  color: '#003087' },
-  { key: 'collingwood',  names: ['Collingwood', 'Magpies', 'COL'],                       abbr: 'COL',  color: '#1a1a1a' },
-  { key: 'essendon',     names: ['Essendon', 'Bombers', 'ESS'],                          abbr: 'ESS',  color: '#cc2200' },
-  { key: 'fremantle',    names: ['Fremantle', 'Dockers', 'FRE'],                         abbr: 'FRE',  color: '#2a0845' },
-  { key: 'geelong',      names: ['Geelong', 'Cats', 'GEE'],                              abbr: 'GEE',  color: '#1c3f6e' },
-  { key: 'goldcoast',    names: ['Gold Coast', 'Suns', 'GC'],                            abbr: 'GC',   color: '#e8281a' },
-  { key: 'gws',          names: ['GWS', 'Greater Western Sydney', 'GWS Giants', 'Giants', 'Western Sydney'], abbr: 'GWS', color: '#f47920' },
-  { key: 'hawthorn',     names: ['Hawthorn', 'Hawks', 'HAW'],                            abbr: 'HAW',  color: '#4d2004' },
-  { key: 'melbourne',    names: ['Melbourne', 'Demons', 'MEL'],                          abbr: 'MEL',  color: '#0f1b56' },
-  { key: 'northmelbourne', names: ['North Melbourne', 'Kangaroos', 'NM', 'North'],       abbr: 'NM',   color: '#003087' },
-  { key: 'portadelaide', names: ['Port Adelaide', 'Power', 'PTA', 'PA', 'Port'],         abbr: 'PTA',  color: '#009fd9' },
-  { key: 'richmond',     names: ['Richmond', 'Tigers', 'RIC', 'RI'],                     abbr: 'RIC',  color: '#ffd700' },
-  { key: 'stkilda',      names: ['St Kilda', 'Saints', 'STK'],                           abbr: 'STK',  color: '#ed0f05' },
-  { key: 'sydney',       names: ['Sydney', 'Sydney Swans', 'Swans', 'SYD'],              abbr: 'SYD',  color: '#ed0f05' },
-  { key: 'westcoast',    names: ['West Coast', 'West Coast Eagles', 'Eagles', 'WCE', 'WC'], abbr: 'WCE', color: '#003087' },
-  { key: 'westernbulldogs', names: ['Western Bulldogs', 'Bulldogs', 'WBD', 'WB'],        abbr: 'WBD',  color: '#003087' },
+  { key: 'adelaide',        names: ['Adelaide', 'Adelaide Crows', 'Crows', 'ADE'],            abbr: 'ADE',  color: '#002b5c' },
+  { key: 'brisbane',        names: ['Brisbane', 'Brisbane Lions', 'Lions', 'BRI', 'BL'],      abbr: 'BRI',  color: '#a30046' },
+  { key: 'carlton',         names: ['Carlton', 'Carlton Blues', 'Blues', 'CAR'],              abbr: 'CAR',  color: '#003087' },
+  { key: 'collingwood',     names: ['Collingwood', 'Magpies', 'COL'],                         abbr: 'COL',  color: '#1a1a1a' },
+  { key: 'essendon',        names: ['Essendon', 'Bombers', 'ESS'],                            abbr: 'ESS',  color: '#cc2200' },
+  { key: 'fremantle',       names: ['Fremantle', 'Dockers', 'FRE'],                           abbr: 'FRE',  color: '#2a0845' },
+  { key: 'geelong',         names: ['Geelong', 'Cats', 'GEE'],                                abbr: 'GEE',  color: '#1c3f6e' },
+  { key: 'goldcoast',       names: ['Gold Coast', 'Suns', 'GC'],                              abbr: 'GC',   color: '#e8281a' },
+  { key: 'gws',             names: ['GWS', 'Greater Western Sydney', 'GWS Giants', 'Giants', 'Western Sydney', 'G. W. Sydney'], abbr: 'GWS', color: '#f47920' },
+  { key: 'hawthorn',        names: ['Hawthorn', 'Hawks', 'HAW'],                              abbr: 'HAW',  color: '#4d2004' },
+  { key: 'melbourne',       names: ['Melbourne', 'Demons', 'MEL'],                            abbr: 'MEL',  color: '#0f1b56' },
+  { key: 'northmelbourne',  names: ['North Melbourne', 'Kangaroos', 'NM', 'North'],           abbr: 'NM',   color: '#003087' },
+  { key: 'portadelaide',    names: ['Port Adelaide', 'Power', 'PTA', 'PA', 'Port'],           abbr: 'PTA',  color: '#009fd9' },
+  { key: 'richmond',        names: ['Richmond', 'Tigers', 'RIC', 'RI'],                       abbr: 'RIC',  color: '#ffd700' },
+  { key: 'stkilda',         names: ['St Kilda', 'Saints', 'STK'],                             abbr: 'STK',  color: '#ed0f05' },
+  { key: 'sydney',          names: ['Sydney', 'Sydney Swans', 'Swans', 'SYD'],                abbr: 'SYD',  color: '#ed0f05' },
+  { key: 'westcoast',       names: ['West Coast', 'West Coast Eagles', 'Eagles', 'WCE', 'WC'], abbr: 'WCE', color: '#003087' },
+  { key: 'westernbulldogs', names: ['Western Bulldogs', 'Bulldogs', 'WBD', 'WB', 'W. Bulldogs'], abbr: 'WBD', color: '#003087' },
 ];
 
 // ─── MOCK RESPONSE ────────────────────────────────────────────────────────────
@@ -149,32 +127,14 @@ const MOCK_RESPONSE = {
   liveGames: [
     {
       id: 'mock_g001', fanfootyId: null, liveUrl: null,
-      teamA: { name: 'Richmond',    abbr: 'RIC',  color: '#ffd700', score: 72, goals: 10, behinds: 12 },
-      teamB: { name: 'Collingwood', abbr: 'COL',  color: '#1a1a1a', score: 61, goals: 8,  behinds: 13 },
+      teamA: { name: 'Richmond',    abbr: 'RIC', color: '#ffd700', score: 72, goals: 10, behinds: 12 },
+      teamB: { name: 'Collingwood', abbr: 'COL', color: '#1a1a1a', score: 61, goals: 8,  behinds: 13 },
       quarter: 3, timeRemaining: '8:42', venue: 'MCG',
       date: 'Sat 22 Jun', time: '7:25 PM AET',
       status: 'live',
       players: [
-        mockPlayer('dustin-martin',    'Dustin Martin',    'MID', 88,  91),
-        mockPlayer('shai-bolton',      'Shai Bolton',      'FWD', 54,  49),
-        mockPlayer('jack-riewoldt',    'Jack Riewoldt',    'FWD', 62,  68),
-        mockPlayer('scott-pendlebury', 'Scott Pendlebury', 'MID', 102, 109),
-        mockPlayer('nick-daicos',      'Nick Daicos',      'MID', 118, 124),
-        mockPlayer('jordan-de-goey',   'Jordan De Goey',   'FWD', 76,  72),
-      ],
-    },
-    {
-      id: 'mock_g002', fanfootyId: null, liveUrl: null,
-      teamA: { name: 'Carlton',  abbr: 'CAR', color: '#003087', score: 45, goals: 6, behinds: 9  },
-      teamB: { name: 'Hawthorn', abbr: 'HAW', color: '#4d2004', score: 55, goals: 7, behinds: 14 },
-      quarter: 2, timeRemaining: '14:21', venue: 'Marvel Stadium',
-      date: 'Sat 22 Jun', time: '4:35 PM AET',
-      status: 'live',
-      players: [
-        mockPlayer('patrick-cripps', 'Patrick Cripps', 'MID', 95, 101),
-        mockPlayer('sam-walsh',      'Sam Walsh',      'MID', 67, 63),
-        mockPlayer('james-sicily',   'James Sicily',   'DEF', 74, 79),
-        mockPlayer('jai-newcombe',   'Jai Newcombe',   'MID', 83, 88),
+        mockPlayer('dustin-martin', 'Dustin Martin', 'MID',  88,  91),
+        mockPlayer('nick-daicos',   'Nick Daicos',   'MID', 118, 124),
       ],
     },
   ],
@@ -189,28 +149,17 @@ const MOCK_RESPONSE = {
       status: 'upcoming',
       players: [],
     },
-    {
-      id: 'mock_g004', fanfootyId: null, liveUrl: null,
-      round: 14,
-      teamA: { name: 'Essendon', abbr: 'ESS', color: '#cc2200', score: 0, goals: 0, behinds: 0 },
-      teamB: { name: 'GWS',      abbr: 'GWS', color: '#f47920', score: 0, goals: 0, behinds: 0 },
-      quarter: 0, timeRemaining: '', venue: 'Marvel Stadium',
-      date: 'Sun 23 Jun', time: '12:35 PM AET',
-      status: 'upcoming',
-      players: [],
-    },
   ],
   pastGames: [
     {
       id: 'mock_g005', fanfootyId: null, liveUrl: null,
-      teamA: { name: 'Melbourne',   abbr: 'MEL', color: '#0f1b56', score: 96,  goals: 14, behinds: 12 },
-      teamB: { name: 'Sydney',      abbr: 'SYD', color: '#ed0f05', score: 102, goals: 15, behinds: 12 },
+      teamA: { name: 'Melbourne', abbr: 'MEL', color: '#0f1b56', score: 96,  goals: 14, behinds: 12 },
+      teamB: { name: 'Sydney',    abbr: 'SYD', color: '#ed0f05', score: 102, goals: 15, behinds: 12 },
       quarter: 4, timeRemaining: '0:00', venue: 'MCG',
       date: 'Fri 21 Jun', time: '7:50 PM AET',
       status: 'final',
       players: [
         mockPlayer('clayton-oliver', 'Clayton Oliver', 'MID', 134, 142),
-        mockPlayer('isaac-heeney',   'Isaac Heeney',   'MID', 121, 128),
       ],
     },
   ],
@@ -224,10 +173,6 @@ function mockPlayer(id, name, pos, dt, sc) {
   };
 }
 
-/**
- * Empty stats object. The frontend reads these keys; emit them all as null
- * so it can render "—" placeholders without defensive checks.
- */
 function emptyStats() {
   return {
     kk: null, hb: null, mk: null, tk: null, ho: null, fk: null,
@@ -238,36 +183,20 @@ function emptyStats() {
 
 // ─── MODULE-SCOPED CACHE ──────────────────────────────────────────────────────
 
-/**
- * Module-scoped cache. Persists across warm invocations of the same Netlify
- * function container. Cold-start invocations get a fresh empty cache, which
- * is fine — first request after a cold start triggers exactly one scrape,
- * then subsequent requests within 30s reuse the result.
- *
- * Concurrent callers within the TTL window each get the same cached object;
- * we don't lock because the worst-case is a handful of duplicate fetches
- * during cache-miss bursts and FanFooty can absorb that.
- */
 let cache = { data: null, expiresAt: 0 };
 
 // ─── MAIN HANDLER ─────────────────────────────────────────────────────────────
 
 exports.handler = async function (event) {
   if (event.httpMethod !== 'GET') {
-    return {
-      statusCode: 405,
-      headers: jsonHeaders(),
-      body: JSON.stringify({ error: 'Method not allowed' }),
-    };
+    return { statusCode: 405, headers: jsonHeaders(), body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  // ── Mock mode (default) — only scrape when FANFOOTY_LIVE === 'true' ──────
   if (process.env.FANFOOTY_LIVE !== 'true') {
     console.log('[fanfooty-proxy] FANFOOTY_LIVE!=true — returning mock data');
     return ok(MOCK_RESPONSE);
   }
 
-  // ── Cache check ──────────────────────────────────────────────────────────
   const now = Date.now();
   if (cache.data && cache.expiresAt > now) {
     const ageMs = CACHE_TTL_MS - (cache.expiresAt - now);
@@ -275,7 +204,6 @@ exports.handler = async function (event) {
     return ok(cache.data);
   }
 
-  // ── Live scrape ──────────────────────────────────────────────────────────
   try {
     const [roundScoresHtml, fixtureHtml, homepageHtml] = await Promise.all([
       fetchPage(`${BASE_URL}/game/roundscores.php`),
@@ -283,42 +211,30 @@ exports.handler = async function (event) {
       fetchPage(`${BASE_URL}/`),
     ]);
 
-    const $scores   = cheerio.load(roundScoresHtml);
-    const $fixture  = cheerio.load(fixtureHtml);
-    const $home     = cheerio.load(homepageHtml);
+    const $scores  = cheerio.load(roundScoresHtml);
+    const $fixture = cheerio.load(fixtureHtml);
+    const $home    = cheerio.load(homepageHtml);
 
-    // Build a lookup from the homepage of canonical /live/ URLs and team
-    // abbreviations as FanFooty displays them, keyed by team-pair.
+    const round         = parseRoundNumber($scores);
     const homepageGames = parseHomepageGames($home);
+    const fixtureGames  = parseFixtureRound($fixture, round);
+    const playersByPair = parseRoundScores($scores);
 
-    // Roundscores gives us players + scores for every game in this round
-    // that has been played or is in progress.
-    const { round, scoredGames } = parseRoundScores($scores, homepageGames);
-
-    // Fixture gives us venue, kickoff datetime, and the same-round games
-    // that haven't started yet.
-    const { upcomingGames, kickoffByPair } = parseFixture(
-      $fixture, round, scoredGames, homepageGames,
-    );
-
-    // Classify scored games into live vs past using kickoff time.
-    const { liveGames, pastGames } = classifyScoredGames(
-      scoredGames, kickoffByPair, new Date(),
-    );
+    const games = mergeGames(fixtureGames, playersByPair, homepageGames);
+    const { liveGames, upcomingGames, pastGames } = classifyGames(games, new Date());
 
     const payload = { round, liveGames, upcomingGames, pastGames };
-
-    // Cache and return
     cache = { data: payload, expiresAt: now + CACHE_TTL_MS };
+
     console.log(
       `[fanfooty-proxy] OK — R${round}: ` +
-      `${liveGames.length} live, ${upcomingGames.length} upcoming, ${pastGames.length} past`,
+      `${liveGames.length} live, ${upcomingGames.length} upcoming, ${pastGames.length} past` +
+      ` (fixture=${fixtureGames.length}, scored=${playersByPair.size}, homepage=${homepageGames.size})`,
     );
     return ok(payload);
 
   } catch (err) {
-    console.error('[fanfooty-proxy] Fatal scrape error:', err.message);
-    // Always return 200 with mock data so the frontend stays functional
+    console.error('[fanfooty-proxy] Fatal scrape error:', err.message, err.stack);
     return ok({ ...MOCK_RESPONSE, _fallback: true, _error: err.message });
   }
 };
@@ -349,57 +265,56 @@ function ok(payload) {
   return { statusCode: 200, headers: jsonHeaders(), body: JSON.stringify(payload) };
 }
 
+// ─── ROUND NUMBER ─────────────────────────────────────────────────────────────
+
+function parseRoundNumber($scores) {
+  const titleText = $scores('title').text();
+  let m = titleText.match(/Round\s+(\d+)/i);
+  if (m) return parseInt(m[1], 10);
+
+  const bodyText = $scores('body').text();
+  m = bodyText.match(/Fantasy Scores:?\s*Round\s+(\d+)/i);
+  if (m) return parseInt(m[1], 10);
+
+  m = bodyText.match(/\bRound\s+(\d+)\b/i);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 // ─── HOMEPAGE PARSER ──────────────────────────────────────────────────────────
 
-/**
- * Parse the homepage's fixture list to extract canonical /live/ URLs and
- * the abbreviation pairs (e.g. "COL" / "HAW") that FanFooty itself uses.
- *
- * Returns a Map keyed by canonical pair-key (alphabetical) → metadata.
- * Used downstream to:
- *   · prefer FanFooty's short codes over our derived ones for UI consistency
- *   · provide a verified `liveUrl` rather than constructing a fragile guess
- */
 function parseHomepageGames($) {
   const games = new Map();
 
-  // The fixture is rendered as a list of <a> elements pointing at /live/...
-  // Each link's text contains team abbreviations and (when finalised) scores.
   $('a[href*="/live/"]').each((_, el) => {
     try {
-      const $a   = $(el);
+      const $a = $(el);
       const href = $a.attr('href') || '';
 
-      // Match: /live/2026/9764-magpies-hawks.html  →  id=9764, slug=magpies-hawks
-      const m = href.match(/\/live\/(\d{4})\/(\d+)-([a-z0-9-]+)\.html/i);
-      if (!m) return;
+      const urlMatch = href.match(/\/live\/(\d{4})\/(\d+)-([a-z0-9-]+)\.html/i);
+      if (!urlMatch) return;
 
       const liveUrl    = href.startsWith('http') ? href : `${BASE_URL}${href}`;
-      const fanfootyId = parseInt(m[2], 10);
+      const fanfootyId = parseInt(urlMatch[2], 10);
 
-      // Extract the two abbreviations from the link text. Format is loose:
-      //   "Thu 30 Apr, 7.30  COL HAW  93 93"
-      // Capture two consecutive uppercase 2-3 letter tokens.
       const text = $a.text().replace(/\s+/g, ' ').trim();
-      const abbrMatch = text.match(/\b([A-Z]{2,4})\b\s+\b([A-Z]{2,4})\b/);
-      if (!abbrMatch) return;
 
-      const abbrA = abbrMatch[1];
-      const abbrB = abbrMatch[2];
+      const codeMatch = text.match(/\b([A-Z]{2,4})\b\s+\b([A-Z]{2,4})\b/);
+      if (!codeMatch) return;
 
-      const teamA = findTeamByAnyName(abbrA);
-      const teamB = findTeamByAnyName(abbrB);
+      const teamA = findTeamByAnyName(codeMatch[1]);
+      const teamB = findTeamByAnyName(codeMatch[2]);
       if (!teamA || !teamB) return;
 
+      const scoreMatch = text.match(/\b[A-Z]{2,4}\b\s+\b[A-Z]{2,4}\b\s+(\d+)\s+(\d+)/);
+      const scoreA = scoreMatch ? parseInt(scoreMatch[1], 10) : null;
+      const scoreB = scoreMatch ? parseInt(scoreMatch[2], 10) : null;
+
       games.set(pairKey(teamA.key, teamB.key), {
-        fanfootyId,
-        liveUrl,
-        teamA: teamA,
-        teamB: teamB,
+        fanfootyId, liveUrl, scoreA, scoreB,
+        teamAKey: teamA.key, teamBKey: teamB.key,
       });
     } catch (e) {
-      // Ignore individual link failures — homepage layout is decorative
-      // and we treat its data as a nice-to-have, not a requirement.
+      // ignore individual parse failures
     }
   });
 
@@ -408,189 +323,117 @@ function parseHomepageGames($) {
 
 // ─── ROUND SCORES PARSER ──────────────────────────────────────────────────────
 
-/**
- * Parse /game/roundscores.php. Returns the round number and one entry per
- * scored game (live OR final — classification happens later using kickoff
- * times from the fixture page).
- *
- * @param {CheerioAPI} $
- * @param {Map} homepageGames - from parseHomepageGames(); used to enrich
- *                              each game with fanfootyId and liveUrl.
- * @returns {{ round: number, scoredGames: Game[] }}
- */
-function parseRoundScores($, homepageGames) {
-  // ── 1. Round number ──────────────────────────────────────────────────────
-  let round = 0;
-  const titleMatch = $('title').text().match(/Round\s+(\d+)/i);
-  if (titleMatch) {
-    round = parseInt(titleMatch[1], 10);
-  } else {
-    // Fallback: scan body text for "Round N"
-    const bodyMatch = $('body').text().match(/Round\s+(\d+)/i);
-    if (bodyMatch) round = parseInt(bodyMatch[1], 10);
-  }
+function parseRoundScores($) {
+  const result = new Map();
 
-  // ── 2. Find team header cells ────────────────────────────────────────────
-  // A team header is a <td> with NO <a> children whose text matches
-  //   "TeamName: G.B" or "TeamName: G.B.Total"
-  const teamHeaderCells = [];
-  $('td').each((_, el) => {
-    const $el = $(el);
-    if ($el.find('a').length > 0) return;
-    const text = $el.text().trim();
-    if (/^[A-Za-z][A-Za-z .]+:\s*\d+\.\d+(\.\d+)?$/.test(text)) {
-      teamHeaderCells.push({ el, text });
+  $('table').each((_, table) => {
+    try {
+      const cells = $(table).find('td');
+      if (cells.length < 7) return;
+
+      const blocks = [];
+      let currentStart = -1;
+      let currentHeader = null;
+
+      cells.each((idx, cell) => {
+        const $cell = $(cell);
+        if ($cell.find('a').length > 0) return;
+        const text = $cell.text().trim();
+        const headerInfo = parseTeamHeader(text);
+        if (headerInfo) {
+          if (currentStart >= 0 && currentHeader) {
+            blocks.push({ header: currentHeader, start: currentStart, end: idx });
+          }
+          currentHeader = headerInfo;
+          currentStart = idx;
+        }
+      });
+      if (currentStart >= 0 && currentHeader) {
+        blocks.push({ header: currentHeader, start: currentStart, end: cells.length });
+      }
+
+      if (blocks.length !== 2) return;
+
+      const [blockA, blockB] = blocks;
+      const playersA = collectPlayersInRange($, cells, blockA.start, blockA.end);
+      const playersB = collectPlayersInRange($, cells, blockB.start, blockB.end);
+
+      const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
+      result.set(key, {
+        teamA: {
+          key:     blockA.header.teamKey,
+          name:    blockA.header.canonical.names[0],
+          score:   blockA.header.score,
+          goals:   blockA.header.goals,
+          behinds: blockA.header.behinds,
+          players: playersA,
+        },
+        teamB: {
+          key:     blockB.header.teamKey,
+          name:    blockB.header.canonical.names[0],
+          score:   blockB.header.score,
+          goals:   blockB.header.goals,
+          behinds: blockB.header.behinds,
+          players: playersB,
+        },
+      });
+    } catch (e) {
+      console.warn(`[parseRoundScores] Skipped a table: ${e.message}`);
     }
   });
 
-  // ── 3. Pair adjacent headers into games ──────────────────────────────────
-  const scoredGames = [];
-  for (let i = 0; i + 1 < teamHeaderCells.length; i += 2) {
+  return result;
+}
+
+function parseTeamHeader(text) {
+  const m = text.match(/^(.+?):\s*(\d+)\.(\d+)(?:\.(\d+))?$/);
+  if (!m) return null;
+
+  const rawName = m[1].trim();
+  const canonical = findTeamByAnyName(rawName);
+  if (!canonical) return null;
+
+  const goals   = parseInt(m[2], 10) || 0;
+  const behinds = parseInt(m[3], 10) || 0;
+  const score   = m[4] !== undefined ? parseInt(m[4], 10) : (goals * 6 + behinds);
+
+  return { teamKey: canonical.key, canonical, goals, behinds, score };
+}
+
+function collectPlayersInRange($, cells, start, end) {
+  const players = [];
+
+  for (let i = start; i < end; i++) {
+    const $cell = $(cells[i]);
+    const link = $cell.find('a[href*="/player/"]');
+    if (!link.length) continue;
+
     try {
-      const teamAMeta = parseTeamHeader(teamHeaderCells[i].text);
-      const teamBMeta = parseTeamHeader(teamHeaderCells[i + 1].text);
-      if (!teamAMeta || !teamBMeta) continue;
+      const name = link.text().trim();
+      const href = link.attr('href') || '';
+      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+      if (!name) continue;
 
-      // Boundary for player collection is the next team's header cell
-      const stopForA = teamHeaderCells[i + 1].el;
-      const stopForB = teamHeaderCells[i + 2] ? teamHeaderCells[i + 2].el : null;
+      const dtText = $(cells[i + 1]).text().trim();
+      const scText = $(cells[i + 2]).text().trim();
+      const dt = parseInt(dtText, 10);
+      const sc = parseInt(scText, 10);
 
-      const teamAPlayers = collectPlayerRows($, teamHeaderCells[i].el, stopForA);
-      const teamBPlayers = collectPlayerRows($, teamHeaderCells[i + 1].el, stopForB);
+      if (Number.isNaN(dt) || Number.isNaN(sc)) continue;
 
-      // Cross-reference homepage to recover fanfootyId and liveUrl
-      const key = pairKey(teamAMeta.key, teamBMeta.key);
-      const homepageHit = homepageGames.get(key);
-
-      const gameId = homepageHit
-        ? `ff_${homepageHit.fanfootyId}`
-        : `rs_${round}_${i / 2}`;
-
-      scoredGames.push({
-        id:         gameId,
-        fanfootyId: homepageHit ? homepageHit.fanfootyId : null,
-        liveUrl:    homepageHit ? homepageHit.liveUrl    : null,
-        teamA: {
-          name:    teamAMeta.canonical.names[0],
-          abbr:    teamAMeta.canonical.abbr,
-          color:   teamAMeta.canonical.color,
-          score:   teamAMeta.score,
-          goals:   teamAMeta.goals,
-          behinds: teamAMeta.behinds,
-          _key:    teamAMeta.key, // internal — used for fixture matching
-        },
-        teamB: {
-          name:    teamBMeta.canonical.names[0],
-          abbr:    teamBMeta.canonical.abbr,
-          color:   teamBMeta.canonical.color,
-          score:   teamBMeta.score,
-          goals:   teamBMeta.goals,
-          behinds: teamBMeta.behinds,
-          _key:    teamBMeta.key,
-        },
-        // Quarter/time/venue come from the matchcentre or fixture; we don't
-        // have them at this point. classifyScoredGames may fill venue from
-        // the fixture later. Quarter and timeRemaining stay null.
-        quarter:       null,
-        timeRemaining: null,
-        venue:         null,
-        date:          null,
-        time:          null,
-        status:        'live', // tentative — refined by classifyScoredGames
-        players:       [...teamAPlayers, ...teamBPlayers],
+      players.push({
+        id:      slug || `player_${players.length}`,
+        jersey:  null,
+        name,
+        pos:     null,
+        score:   dt,
+        scoreDT: dt,
+        scoreSC: sc,
+        stats:   emptyStats(),
       });
     } catch (e) {
-      console.warn(`[parseRoundScores] Skipped game pair ${i}: ${e.message}`);
+      // skip
     }
-  }
-
-  return { round, scoredGames };
-}
-
-/**
- * Parse a team header cell's text.
- *
- * Examples:
- *   "Brisbane: 17.17.119"       → goals=17, behinds=17, score=119
- *   "North Melbourne: 14.12.96" → goals=14, behinds=12, score=96
- *   "Collingwood: 10.5"         → goals=10, behinds=5, score=65 (computed)
- *
- * Returns null if the team name doesn't resolve to a known club.
- */
-function parseTeamHeader(text) {
-  const match = text.match(/^(.+?):\s*(\d+)\.(\d+)(?:\.(\d+))?$/);
-  if (!match) return null;
-
-  const rawName  = match[1].trim();
-  const goals    = parseInt(match[2], 10) || 0;
-  const behinds  = parseInt(match[3], 10) || 0;
-  const score    = match[4] !== undefined
-    ? parseInt(match[4], 10)
-    : (goals * 6 + behinds);
-
-  const canonical = findTeamByAnyName(rawName);
-  if (!canonical) {
-    console.warn(`[parseTeamHeader] Unknown team: "${rawName}"`);
-    return null;
-  }
-
-  return { key: canonical.key, canonical, score, goals, behinds };
-}
-
-/**
- * Walk the <tr> siblings after a team header cell and collect player rows.
- */
-function collectPlayerRows($, headerCell, stopBoundaryCell) {
-  const players = [];
-  const stopRow = stopBoundaryCell ? $(stopBoundaryCell).closest('tr') : null;
-
-  let currentRow = $(headerCell).closest('tr').next();
-  let guard = 0;
-  const MAX_ROWS = 60;
-
-  while (currentRow.length && guard++ < MAX_ROWS) {
-    if (stopRow && currentRow.is(stopRow)) break;
-
-    const cells = currentRow.find('td');
-    if (!cells.length) {
-      currentRow = currentRow.next();
-      continue;
-    }
-
-    const firstCell  = $(cells[0]);
-    const playerLink = firstCell.find('a[href*="/player/"]');
-
-    if (playerLink.length > 0) {
-      try {
-        const name = playerLink.text().trim();
-        const href = playerLink.attr('href') || '';
-        // /player/will-ashcroft → will-ashcroft
-        const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
-        const dt   = parseInt($(cells[1]).text().trim(), 10);
-        const sc   = parseInt($(cells[2]).text().trim(), 10);
-
-        if (name && !Number.isNaN(dt) && !Number.isNaN(sc)) {
-          players.push({
-            id:      slug || `player_${players.length}`,
-            jersey:  null, // not on roundscores.php
-            name,
-            pos:     null, // not on roundscores.php
-            score:   dt,   // frontend toggles between scoreDT and scoreSC
-            scoreDT: dt,
-            scoreSC: sc,
-            stats:   emptyStats(), // raw stats only on JS-rendered matchcentre
-          });
-        }
-      } catch (e) {
-        // Malformed row — skip silently
-      }
-    } else {
-      // Non-player row: column header, separator, or start of next team.
-      const rowText = currentRow.text().replace(/\s+/g, ' ').trim();
-      if (/^[A-Za-z][A-Za-z .]+:\s*\d+\.\d+/.test(rowText)) break;
-    }
-
-    currentRow = currentRow.next();
   }
 
   return players;
@@ -598,47 +441,28 @@ function collectPlayerRows($, headerCell, stopBoundaryCell) {
 
 // ─── FIXTURE PARSER ───────────────────────────────────────────────────────────
 
-/**
- * Parse /game/fixture.php for upcoming games and kickoff datetimes.
- *
- * Returns:
- *   upcomingGames  — games in the current round whose kickoff is in the
- *                    future (Melbourne local time) AND whose team-pair is
- *                    NOT in scoredGames.
- *   kickoffByPair  — Map<pairKey, { kickoffMs, venue, date, time }>
- *                    for ALL fixture rows in the current round, used to
- *                    classify scored games as live vs final.
- */
-function parseFixture($, currentRound, scoredGames, homepageGames) {
-  const upcomingGames = [];
-  const kickoffByPair = new Map();
-  const scoredKeys    = new Set(scoredGames.map(g => pairKey(g.teamA._key, g.teamB._key)));
-  const nowMs         = Date.now();
+function parseFixtureRound($, targetRound) {
+  const games = [];
+  let currentRound = 0;
+  let lastDay  = '';
+  let lastDate = '';
 
-  let fixtureRound = 0;
-  let lastDate     = ''; // some rows omit the date when same as the row above
-  let gameCounter  = 0;
-
-  $('table tr').each((_, row) => {
+  $('tr').each((_, row) => {
     const $row = $(row);
     const cells = $row.find('td');
     if (!cells.length) return;
 
     const firstText = $(cells[0]).text().trim();
-
-    // Round header detection
-    const roundMatch = firstText.match(/^Round\s+(\d+)/i);
+    const roundMatch = firstText.match(/^Round\s+(\w+)/i);
     if (roundMatch) {
-      fixtureRound = parseInt(roundMatch[1], 10);
-      lastDate = '';
+      const n = parseInt(roundMatch[1], 10);
+      currentRound = Number.isNaN(n) ? -1 : n;
+      lastDay = ''; lastDate = '';
       return;
     }
 
-    // Only process the current round (Layer 1 doesn't show next-round
-    // upcoming until current round finishes — keeps the UI focused).
-    if (fixtureRound !== currentRound) return;
+    if (currentRound !== targetRound) return;
 
-    // Find the cell containing " vs "
     let vsIdx = -1;
     cells.each((idx, cell) => {
       if ($(cell).text().includes(' vs ')) { vsIdx = idx; return false; }
@@ -654,183 +478,176 @@ function parseFixture($, currentRound, scoredGames, homepageGames) {
       const teamB = findTeamByAnyName(vsParts[1].trim());
       if (!teamA || !teamB) return;
 
-      // Date/venue/time extraction — column layout varies:
-      //   [Day] [Date] [Opponents] [Ground] [Time]
-      // or  [Date]      [Opponents] [Ground] [Time]   (if Day omitted)
-      // The Day cell, when present, is alphabetic (e.g. "Saturday").
-      let dateText  = '';
-      const dayCell = vsIdx >= 2 ? $(cells[vsIdx - 2]).text().trim() : '';
-      const dateCell = vsIdx >= 1 ? $(cells[vsIdx - 1]).text().trim() : '';
-
-      if (dayCell && dateCell) {
-        dateText = `${dayCell} ${dateCell}`.trim();
-      } else if (dateCell) {
-        dateText = dateCell;
+      let dayText  = '';
+      let dateText = '';
+      if (vsIdx >= 2) {
+        dayText  = $(cells[vsIdx - 2]).text().trim();
+        dateText = $(cells[vsIdx - 1]).text().trim();
+      } else if (vsIdx === 1) {
+        dateText = $(cells[0]).text().trim();
       }
 
-      // Some rows inherit the date from the previous row (collapsed cells)
+      if (!dayText)  dayText  = lastDay;
       if (!dateText) dateText = lastDate;
-      else lastDate = dateText;
+      if (dayText)   lastDay  = dayText;
+      if (dateText)  lastDate = dateText;
 
       const venue = cells.length > vsIdx + 1 ? $(cells[vsIdx + 1]).text().trim() : '';
       const time  = cells.length > vsIdx + 2 ? $(cells[vsIdx + 2]).text().trim() : '';
 
-      // Best-effort kickoff Date in Melbourne time. Returns null if we
-      // can't parse — that game will fall through to default classification
-      // (assumed live if it has scores, upcoming if not).
-      const kickoffMs = parseKickoffMs(dateText, time, fixtureRound);
-
-      const key = pairKey(teamA.key, teamB.key);
-      kickoffByPair.set(key, { kickoffMs, venue, date: dateText, time });
-
-      // Only include in upcomingGames if NOT already scored AND kickoff is
-      // in the future (or unknown but no scores yet).
-      if (scoredKeys.has(key)) return;
-      if (kickoffMs !== null && kickoffMs < nowMs) return; // started but no scores yet → still wait
-
-      const homepageHit = homepageGames.get(key);
-
-      upcomingGames.push({
-        id:         homepageHit ? `ff_${homepageHit.fanfootyId}` : `up_${currentRound}_${gameCounter++}`,
-        fanfootyId: homepageHit ? homepageHit.fanfootyId : null,
-        liveUrl:    homepageHit ? homepageHit.liveUrl    : null,
-        round:      currentRound,
-        teamA:      { name: teamA.names[0], abbr: teamA.abbr, color: teamA.color, score: 0, goals: 0, behinds: 0, _key: teamA.key },
-        teamB:      { name: teamB.names[0], abbr: teamB.abbr, color: teamB.color, score: 0, goals: 0, behinds: 0, _key: teamB.key },
-        quarter:       null,
-        timeRemaining: null,
+      games.push({
+        teamAKey: teamA.key,
+        teamBKey: teamB.key,
+        teamAName: teamA.names[0],
+        teamBName: teamB.names[0],
+        teamAAbbr: teamA.abbr,
+        teamBAbbr: teamB.abbr,
+        teamAColor: teamA.color,
+        teamBColor: teamB.color,
+        date: [dayText, dateText].filter(Boolean).join(' ').trim(),
+        time,
         venue,
-        date:          dateText,
-        time:          time ? `${time} AET` : null,
-        status:        'upcoming',
-        players:       [],
+        kickoffMs: parseKickoffMs(dayText, dateText, time),
       });
     } catch (e) {
-      console.warn('[parseFixture] Skipped row:', e.message);
+      console.warn('[parseFixtureRound] Skipped a row:', e.message);
     }
   });
 
-  return { upcomingGames, kickoffByPair };
+  return games;
 }
 
-// ─── CLASSIFY SCORED GAMES ────────────────────────────────────────────────────
+// ─── MERGE ────────────────────────────────────────────────────────────────────
 
-/**
- * Split scoredGames into liveGames (kickoff within last 3.5h) and pastGames
- * (kickoff older). When kickoff time is unknown, assume live — the frontend
- * will render correctly either way and the next poll will resolve it.
- *
- * Also enriches each game with venue/date/time from the fixture lookup.
- */
-function classifyScoredGames(scoredGames, kickoffByPair, now) {
+function mergeGames(fixtureGames, playersByPair, homepageGames) {
+  return fixtureGames.map((fx, i) => {
+    const key = pairKey(fx.teamAKey, fx.teamBKey);
+    const score = playersByPair.get(key);
+    const home  = homepageGames.get(key);
+
+    let teamAScore = 0, teamAGoals = 0, teamABehinds = 0, teamAPlayers = [];
+    let teamBScore = 0, teamBGoals = 0, teamBBehinds = 0, teamBPlayers = [];
+
+    if (score) {
+      if (score.teamA.key === fx.teamAKey) {
+        ({ score: teamAScore, goals: teamAGoals, behinds: teamABehinds, players: teamAPlayers } = score.teamA);
+        ({ score: teamBScore, goals: teamBGoals, behinds: teamBBehinds, players: teamBPlayers } = score.teamB);
+      } else {
+        ({ score: teamAScore, goals: teamAGoals, behinds: teamABehinds, players: teamAPlayers } = score.teamB);
+        ({ score: teamBScore, goals: teamBGoals, behinds: teamBBehinds, players: teamBPlayers } = score.teamA);
+      }
+    } else if (home && home.scoreA !== null) {
+      if (home.teamAKey === fx.teamAKey) {
+        teamAScore = home.scoreA;
+        teamBScore = home.scoreB;
+      } else {
+        teamAScore = home.scoreB;
+        teamBScore = home.scoreA;
+      }
+    }
+
+    const fanfootyId = home ? home.fanfootyId : null;
+    const id = fanfootyId ? `ff_${fanfootyId}` : `fx_${i}`;
+
+    return {
+      id,
+      fanfootyId,
+      liveUrl: home ? home.liveUrl : null,
+      teamA: {
+        name: fx.teamAName, abbr: fx.teamAAbbr, color: fx.teamAColor,
+        score: teamAScore, goals: teamAGoals, behinds: teamABehinds,
+      },
+      teamB: {
+        name: fx.teamBName, abbr: fx.teamBAbbr, color: fx.teamBColor,
+        score: teamBScore, goals: teamBGoals, behinds: teamBBehinds,
+      },
+      quarter:       null,
+      timeRemaining: null,
+      venue:         fx.venue,
+      date:          fx.date,
+      time:          fx.time ? `${fx.time} AET` : null,
+      status:        null,
+      _kickoffMs:    fx.kickoffMs,
+      _hasScores:    !!score || !!(home && home.scoreA !== null),
+      players:       [...teamAPlayers, ...teamBPlayers],
+    };
+  });
+}
+
+// ─── CLASSIFY ─────────────────────────────────────────────────────────────────
+
+function classifyGames(games, now) {
   const liveGames = [];
+  const upcomingGames = [];
   const pastGames = [];
-  const nowMs     = now.getTime();
+  const nowMs = now.getTime();
 
-  for (const game of scoredGames) {
-    const key = pairKey(game.teamA._key, game.teamB._key);
-    const fixtureInfo = kickoffByPair.get(key);
+  for (const game of games) {
+    const k = game._kickoffMs;
+    let bucket;
 
-    if (fixtureInfo) {
-      game.venue = fixtureInfo.venue || game.venue;
-      game.date  = fixtureInfo.date  || game.date;
-      game.time  = fixtureInfo.time ? `${fixtureInfo.time} AET` : game.time;
+    if (k === null || k === undefined) {
+      bucket = game._hasScores ? 'past' : 'upcoming';
+    } else if (k > nowMs) {
+      bucket = 'upcoming';
+    } else if (nowMs <= k + LIVE_WINDOW_MS) {
+      bucket = 'live';
+    } else {
+      bucket = 'past';
     }
 
-    const kickoffMs = fixtureInfo ? fixtureInfo.kickoffMs : null;
+    delete game._kickoffMs;
+    delete game._hasScores;
 
-    // Strip internal _key fields from team objects before sending to client
-    delete game.teamA._key;
-    delete game.teamB._key;
-
-    if (kickoffMs === null) {
-      // Unknown kickoff — assume live so the user sees the latest scores
+    if (bucket === 'live') {
       game.status = 'live';
       liveGames.push(game);
-      continue;
-    }
-
-    const elapsed = nowMs - kickoffMs;
-    if (elapsed >= 0 && elapsed <= LIVE_WINDOW_MS) {
-      game.status = 'live';
-      liveGames.push(game);
-    } else if (elapsed > LIVE_WINDOW_MS) {
+    } else if (bucket === 'upcoming') {
+      game.status = 'upcoming';
+      upcomingGames.push(game);
+    } else {
       game.status = 'final';
-      // For final games, set quarter to 4 and time to "0:00" so the UI can
-      // distinguish them from live games waiting on quarter info.
-      game.quarter       = 4;
+      game.quarter = 4;
       game.timeRemaining = '0:00';
       pastGames.push(game);
-    } else {
-      // kickoff is in the future but we have scores? Shouldn't happen, but
-      // be defensive — treat as live.
-      game.status = 'live';
-      liveGames.push(game);
     }
   }
 
-  return { liveGames, pastGames };
+  return { liveGames, upcomingGames, pastGames };
 }
 
 // ─── DATE PARSING (Melbourne time) ────────────────────────────────────────────
 
-/**
- * Parse a fixture date+time into a UTC millisecond timestamp anchored in
- * Melbourne local time (AEST UTC+10 / AEDT UTC+11).
- *
- * Inputs are loose: dateText might be "Saturday March 14" or "March 14",
- * timeText might be "4:15pm" or "7.25" or "12:35 PM".
- * Returns null if parsing fails.
- *
- * Strategy: format a candidate ISO-like string, parse it as if UTC, then
- * shift by Melbourne's current offset for that calendar date. We use
- * Intl.DateTimeFormat to determine the offset (handles AEDT/AEST DST
- * automatically) — no external date library needed.
- */
-function parseKickoffMs(dateText, timeText, round) {
+function parseKickoffMs(dayText, dateText, timeText) {
   if (!dateText || !timeText) return null;
 
-  // Normalise date text: drop weekday, keep "March 14" / "14 March" / "Mar 14"
   const cleanDate = dateText.replace(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\s+/i, '').trim();
-  const dateMatch = cleanDate.match(
-    /(?:(\d{1,2})\s+([A-Za-z]+))|(?:([A-Za-z]+)\s+(\d{1,2}))/,
-  );
-  if (!dateMatch) return null;
 
-  const day      = parseInt(dateMatch[1] || dateMatch[4], 10);
-  const monthStr = (dateMatch[2] || dateMatch[3] || '').toLowerCase();
+  const dm = cleanDate.match(/(?:([A-Za-z]+)\s+(\d{1,2}))|(?:(\d{1,2})\s+([A-Za-z]+))/);
+  if (!dm) return null;
+
+  const monthStr = (dm[1] || dm[4] || '').toLowerCase();
+  const day      = parseInt(dm[2] || dm[3], 10);
   const monthIdx = MONTHS.findIndex(m => m.startsWith(monthStr.slice(0, 3)));
-  if (monthIdx === -1) return null;
+  if (monthIdx === -1 || !day) return null;
 
-  // Time: "4:15pm", "7.25 PM", "12:35", "19:30"
   const tm = timeText.match(/(\d{1,2})[:.](\d{2})\s*(am|pm)?/i);
   if (!tm) return null;
-  let hour   = parseInt(tm[1], 10);
-  const min  = parseInt(tm[2], 10);
-  const mer  = (tm[3] || '').toLowerCase();
+  let hour  = parseInt(tm[1], 10);
+  const min = parseInt(tm[2], 10);
+  const mer = (tm[3] || '').toLowerCase();
   if (mer === 'pm' && hour < 12) hour += 12;
   if (mer === 'am' && hour === 12) hour = 0;
-  // FanFooty's fixture page uses 24-hour-ish times (7.25 = evening) when no
-  // meridiem is given. AFL games never start before 11am or after 9pm
-  // Melbourne time; if a sub-12 hour comes in without am/pm and the round
-  // is in season (post-March), treat <11 as PM (e.g. 7.25 → 19:25).
   if (!mer && hour < 11) hour += 12;
 
-  // Resolve the year. AFL season runs March–September, but finals push into
-  // late September/October. Use current Melbourne year as default; if the
-  // computed date is more than 30 days in the past, roll forward a year.
   const melbNow = nowInMelbourne();
-  let year = melbNow.year;
+  let candidate = melbourneDateToUtcMs(melbNow.year, monthIdx, day, hour, min);
+  if (candidate === null) return null;
 
-  // Build the candidate Melbourne-local datetime
-  const candidateMs = melbourneDateToUtcMs(year, monthIdx, day, hour, min);
-  if (candidateMs === null) return null;
-
-  // If the candidate is >30 days in the past, the year is wrong (rolled over)
-  if ((Date.now() - candidateMs) > 30 * 24 * 60 * 60 * 1000) {
-    return melbourneDateToUtcMs(year + 1, monthIdx, day, hour, min);
+  if ((Date.now() - candidate) > 30 * 24 * 60 * 60 * 1000) {
+    candidate = melbourneDateToUtcMs(melbNow.year + 1, monthIdx, day, hour, min);
   }
-  return candidateMs;
+  return candidate;
 }
 
 const MONTHS = [
@@ -838,10 +655,6 @@ const MONTHS = [
   'july', 'august', 'september', 'october', 'november', 'december',
 ];
 
-/**
- * Get the current date components AS THEY APPEAR in Melbourne local time.
- * Used to anchor year resolution in parseKickoffMs.
- */
 function nowInMelbourne() {
   const fmt = new Intl.DateTimeFormat('en-AU', {
     timeZone: 'Australia/Melbourne',
@@ -860,28 +673,12 @@ function nowInMelbourne() {
   };
 }
 
-/**
- * Convert (year, monthIdx, day, hour, min) interpreted as Melbourne local
- * time into a UTC millisecond timestamp.
- *
- * Approach: construct a Date as if the components were UTC, then determine
- * the Melbourne UTC offset for that wall-clock instant via Intl, and
- * subtract the offset. Iterate once because the offset itself depends on
- * the local time (DST boundary edge cases) — one pass is sufficient since
- * AEDT↔AEST transitions don't span more than 1 hour.
- */
 function melbourneDateToUtcMs(year, monthIdx, day, hour, min) {
-  // Initial guess: pretend it's UTC
   let utcGuess = Date.UTC(year, monthIdx, day, hour, min, 0);
-
-  // Determine Melbourne offset at that guess
   const offsetMin = melbourneOffsetMinutesAt(utcGuess);
   if (offsetMin === null) return null;
-
-  // Adjust: the real UTC time is the wall-clock minus the offset
   let result = utcGuess - offsetMin * 60 * 1000;
 
-  // Re-check offset around the result (handles DST boundary)
   const refinedOffset = melbourneOffsetMinutesAt(result);
   if (refinedOffset !== null && refinedOffset !== offsetMin) {
     result = utcGuess - refinedOffset * 60 * 1000;
@@ -889,11 +686,6 @@ function melbourneDateToUtcMs(year, monthIdx, day, hour, min) {
   return result;
 }
 
-/**
- * Returns Melbourne's UTC offset (in minutes) at a given UTC instant.
- * AEST = +600, AEDT = +660. Implemented via Intl rather than hardcoded DST
- * dates so it's correct indefinitely without maintenance.
- */
 function melbourneOffsetMinutesAt(utcMs) {
   try {
     const fmt = new Intl.DateTimeFormat('en-US', {
@@ -919,11 +711,6 @@ function melbourneOffsetMinutesAt(utcMs) {
 
 // ─── TEAM RESOLUTION ──────────────────────────────────────────────────────────
 
-/**
- * Resolve any team name/abbreviation to its canonical TEAMS entry.
- * Case-insensitive, matches against every entry in `names`.
- * Returns null if no match.
- */
 function findTeamByAnyName(input) {
   if (!input) return null;
   const needle = input.trim().toLowerCase();
@@ -932,19 +719,12 @@ function findTeamByAnyName(input) {
       if (n.toLowerCase() === needle) return team;
     }
   }
-  // Substring fallback — handles things like "Brisbane Lions vs..." where
-  // the trim picked up extra characters. Match on team's primary name only
-  // to avoid ambiguity (e.g. "Coast" matching both Gold Coast and West Coast).
   for (const team of TEAMS) {
     if (needle.includes(team.names[0].toLowerCase())) return team;
   }
   return null;
 }
 
-/**
- * Canonical pair key — order-independent identifier for a matchup.
- * Inputs should be canonical team keys (from TEAMS[].key).
- */
 function pairKey(a, b) {
   return [a, b].sort().join('__');
 }
