@@ -11,6 +11,14 @@
  *   pulls in a transitive `undici` that crashes on Node 18 with
  *   "ReferenceError: File is not defined". Native fetch sidesteps both.
  *
+ *   We import from `cheerio/slim`, NOT the default `cheerio` entry. The
+ *   default entry eagerly requires undici v7 (for cheerio.fromURL) which
+ *   uses Node 20+ globals and crashes on Node 18 at module load time —
+ *   even if we never call fromURL. The slim entry has identical parsing
+ *   and traversal APIs (load, $, find, each, closest, ...) without the
+ *   HTTP machinery we don't use. This is a documented, supported export
+ *   path published by the cheerio maintainers for exactly this scenario.
+ *
  * ENVIRONMENT VARIABLES:
  *   FANFOOTY_LIVE=true   — perform real scraping. Anything else (or unset)
  *                          serves MOCK_RESPONSE. Default-off is intentional:
@@ -64,8 +72,16 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const cheerio = require('cheerio');
+const cheerio = require('cheerio/slim');
 // fetch() is a Node 18+ global — no import needed.
+//
+// Note: we use cheerio/slim rather than the default cheerio entry. The full
+// entry point eagerly require()s undici (cheerio's HTTP client for its
+// fromURL() helper) at module load time. undici v7 uses Node 20+ globals
+// like File and crashes on Node 18 with "ReferenceError: File is not
+// defined". The slim entry exposes the same parsing/traversal API
+// (load, $, find, each, closest, etc) without the URL-loading machinery —
+// which we don't need anyway because we do our own fetching.
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
