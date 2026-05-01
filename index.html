@@ -2984,7 +2984,7 @@ document.getElementById('btn-add-custom-team').addEventListener('click', () => {
   const colors = ['#a855f7','#f59e0b','#10b981','#f43f5e','#6366f1'];
   State.customTeams.push({
     id:        `ct_${Date.now()}`,
-    name:      `Team ${idx + 2}`, // 1=My Team, 2=Opp, then 3, 4, 5
+    name:      `Team ${idx}`, // 1=My Team, 2, 3, 4, 5
     color:     colors[customCount % colors.length],
     playerIds: [],
     readonly:  false,
