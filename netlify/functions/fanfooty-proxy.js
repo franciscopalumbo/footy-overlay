@@ -367,6 +367,10 @@ function dumpDiagnostics(htmls, parsers) {
     if (headerMatches.length > 0 && headerMatches.length < 10) {
       headerMatches.forEach(m => console.log(`[DEBUG]   ${m}`));
     }
+
+    // Print one sample player link to inspect its href structure
+    const sampleLink = $scores(table).find('a[href*="/player/"]').first().attr('href');
+    console.log(`[DEBUG] table[${tIdx}] sample player href: ${sampleLink}`);
   });
 
   // ── Fixture: per-row inspection ──────────────────────────────────────────
