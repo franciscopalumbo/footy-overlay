@@ -606,7 +606,7 @@ function extractTeamBlock($, $cell) {
     const cells = $tr.find('td');
     if (cells.length < 3) return;
 
-    const link = cells.eq(0).find('a[href*="/player/"]');
+    const link = $tr.find('a[href*="/player/"]').first();
     if (!link.length) return;
 
     const name = link.text().trim();
