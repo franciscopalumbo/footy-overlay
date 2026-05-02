@@ -333,44 +333,34 @@ function dumpDiagnostics(htmls, parsers) {
 
   // ── Roundscores: per-table inspection ────────────────────────────────────
   console.log('[DEBUG] --- roundscores tables ---');
+  const outerTables = $scores('table').filter((_, t) => $scores(t).parents('table').length === 0);
+  console.log(`[DEBUG] outer tables (no <table> ancestor): ${outerTables.length}`);
+
+  outerTables.each((tIdx, table) => {
+    const $table = $scores(table);
+    const teamCells = $table.children('tbody').children('tr').children('td')
+      .add($table.children('tr').children('td'));
+    console.log(`[DEBUG] outer[${tIdx}]: ${teamCells.length} direct team cells`);
+
+    teamCells.each((cIdx, td) => {
+      const $td = $scores(td);
+      const ownText = $td.clone().children().remove().end().text().trim();
+      const innerTable = $td.find('table').first();
+      const innerRows = innerTable.find('tr').length;
+      const innerPlayerLinks = innerTable.find('a[href*="/player/"]').length;
+      console.log(
+        `[DEBUG] outer[${tIdx}].cell[${cIdx}] ` +
+        `ownText="${ownText.slice(0, 50)}" ` +
+        `innerRows=${innerRows} innerPlayerLinks=${innerPlayerLinks}`,
+      );
+    });
+  });
+
+  // Also dump all $('table') cell counts for completeness — distinguishes
+  // outer game tables from inner player tables.
   $scores('table').each((tIdx, table) => {
     const cells = $scores(table).find('td');
-    if (cells.length < 7) {
-      console.log(`[DEBUG] table[${tIdx}]: ${cells.length} cells (skipped — too few)`);
-      return;
-    }
-    console.log(`[DEBUG] table[${tIdx}]: ${cells.length} cells`);
-
-    // First 30 cell texts (truncated)
-    const samples = [];
-    cells.slice(0, 30).each((cIdx, cell) => {
-      const text = $scores(cell).text().trim().slice(0, 40);
-      const hasLink = $scores(cell).find('a').length > 0;
-      samples.push(`  [${cIdx}]${hasLink ? '🔗' : '  '}"${text}"`);
-    });
-    console.log(`[DEBUG] table[${tIdx}] first 30 cells:\n${samples.join('\n')}`);
-
-    // Find cells matching team-header regex
-    const headerMatches = [];
-    cells.each((cIdx, cell) => {
-      const $cell = $scores(cell);
-      if ($cell.find('a').length > 0) return;
-      const text = $cell.text().trim();
-      // Don't use parseTeamHeader (which requires a known team) here —
-      // just check if the SHAPE matches, so we can see whether the regex
-      // fails or only the team-name resolution fails.
-      if (/^.+:\s*\d+\.\d+(\.\d+)?$/.test(text)) {
-        headerMatches.push(`[${cIdx}] "${text}"`);
-      }
-    });
-    console.log(`[DEBUG] table[${tIdx}] team-header regex matches: ${headerMatches.length}`);
-    if (headerMatches.length > 0 && headerMatches.length < 10) {
-      headerMatches.forEach(m => console.log(`[DEBUG]   ${m}`));
-    }
-
-    // Print one sample player link to inspect its href structure
-    const sampleLink = $scores(table).find('a[href*="/player/"]').first().attr('href');
-    console.log(`[DEBUG] table[${tIdx}] sample player href: ${sampleLink}`);
+    console.log(`[DEBUG] table[${tIdx}]: ${cells.length} total cells (find), depth=${$scores(table).parents('table').length}`);
   });
 
   // ── Fixture: per-row inspection ──────────────────────────────────────────
@@ -454,75 +444,164 @@ function parseHomepageGames($) {
 
 // ─── ROUND SCORES PARSER ──────────────────────────────────────────────────────
 
+/**
+ * Parse roundscores.php into a Map<pairKey, GameScores>.
+ *
+ * VERIFIED PRODUCTION HTML STRUCTURE (from diagnostic logs, 2 May 2026):
+ *   Each game is rendered as an OUTER <table> containing one <tr> with
+ *   TWO <td> team-cells. Each team-cell contains:
+ *     · plain text "TeamName: G.B.T" directly inside the <td>
+ *     · an INNER <table> whose <tr><td> rows are the player score rows
+ *
+ *   Example shape:
+ *     <table>                                      <-- outer game table
+ *       <tr>
+ *         <td>                                     <-- team A cell
+ *           Collingwood: 15.3.93
+ *           <table>                                <-- inner player table
+ *             <tr><th>Player</th>...</tr>          (header row)
+ *             <tr>
+ *               <td><a href="/player/nick-daicos">Nick Daicos</a></td>
+ *               <td>124</td><td>103</td>...
+ *             </tr>
+ *             ...
+ *           </table>
+ *         </td>
+ *         <td>                                     <-- team B cell
+ *           Hawthorn: 13.15.93
+ *           <table>...</table>
+ *         </td>
+ *       </tr>
+ *     </table>
+ *
+ * Counts confirm this: 3 games × (1 outer + 2 inner) = 9 tables, which
+ * matches the production diagnostic `tables=9`.
+ *
+ * Algorithm:
+ *   1. Find OUTER tables — those with no <table> ancestor.
+ *   2. For each outer table, get its direct team-cells (children of the
+ *      outer <tr>'s <td>).
+ *   3. For each team-cell, extract the cell's OWN text (not descendants)
+ *      to get the "TeamName: G.B.T" header — using clone+remove children.
+ *   4. The inner <table> inside the cell holds player rows. Each player
+ *      row is a <tr> with a <td><a/></td> as the first cell, followed by
+ *      5 numeric <td>s.
+ *   5. Pair the two team-cells per outer table — that's one game.
+ */
 function parseRoundScores($) {
   const result = new Map();
 
-  $('table').each((_, table) => {
+  // Outer tables only — skip nested player tables.
+  const outerTables = $('table').filter((_, t) => $(t).parents('table').length === 0);
+
+  outerTables.each((tIdx, table) => {
     try {
-      const cells = $(table).find('td');
-      if (cells.length < 7) return;
+      // Direct child cells of the outer table's <tr>. Use .children() to
+      // walk one level deep so nested-table cells aren't included.
+      // Account for both <thead/tbody> and direct <tr> children.
+      const $table = $(table);
+      let teamCells = $table.children('tbody').children('tr').children('td');
+      if (teamCells.length === 0) {
+        teamCells = $table.children('tr').children('td');
+      }
+      // Some rows might be inside nested <thead>; harmless but include them
+      if (teamCells.length === 0) {
+        teamCells = $table.children('thead').children('tr').children('td');
+      }
+
+      // We expect exactly 2 team cells per game table. Skip tables with
+      // any other count — those are decorative/layout tables.
+      if (teamCells.length !== 2) return;
 
       const blocks = [];
-      let currentStart = -1;
-      let currentHeader = null;
+      teamCells.each((_, td) => {
+        const $td = $(td);
 
-      cells.each((idx, cell) => {
-        const $cell = $(cell);
-        if ($cell.find('a').length > 0) return;
-        const text = $cell.text().trim();
-        const headerInfo = parseTeamHeader(text);
-        if (headerInfo) {
-          if (currentStart >= 0 && currentHeader) {
-            blocks.push({ header: currentHeader, start: currentStart, end: idx });
-          }
-          currentHeader = headerInfo;
-          currentStart = idx;
-        }
+        // "Own text" = direct text nodes only, excluding descendant text.
+        // Trick: clone, remove all child elements, read text.
+        const ownText = $td.clone().children().remove().end().text().trim();
+        const headerInfo = parseTeamHeader(ownText);
+        if (!headerInfo) return;
+
+        // Inner player table — find FIRST <table> descendant.
+        const innerTable = $td.find('table').first();
+        const players = collectPlayersFromInnerTable($, innerTable);
+        blocks.push({ header: headerInfo, players });
       });
-      if (currentStart >= 0 && currentHeader) {
-        blocks.push({ header: currentHeader, start: currentStart, end: cells.length });
-      }
 
-      // Accept any even number of blocks, paired in order. This covers:
-      //   · 0 blocks (skip)
-      //   · 2 blocks (typical: one game per table)
-      //   · 4, 6, 8, ... blocks (production may put multiple games per table)
-      // Odd numbers indicate a parse problem; we still process pairs and
-      // drop the trailing unpaired block.
-      if (blocks.length < 2) return;
+      if (blocks.length !== 2) return;
 
-      for (let pairIdx = 0; pairIdx + 1 < blocks.length; pairIdx += 2) {
-        const blockA = blocks[pairIdx];
-        const blockB = blocks[pairIdx + 1];
-        const playersA = collectPlayersInRange($, cells, blockA.start, blockA.end);
-        const playersB = collectPlayersInRange($, cells, blockB.start, blockB.end);
-
-        const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
-        result.set(key, {
-          teamA: {
-            key:     blockA.header.teamKey,
-            name:    blockA.header.canonical.names[0],
-            score:   blockA.header.score,
-            goals:   blockA.header.goals,
-            behinds: blockA.header.behinds,
-            players: playersA,
-          },
-          teamB: {
-            key:     blockB.header.teamKey,
-            name:    blockB.header.canonical.names[0],
-            score:   blockB.header.score,
-            goals:   blockB.header.goals,
-            behinds: blockB.header.behinds,
-            players: playersB,
-          },
-        });
-      }
+      const [blockA, blockB] = blocks;
+      const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
+      result.set(key, {
+        teamA: {
+          key:     blockA.header.teamKey,
+          name:    blockA.header.canonical.names[0],
+          score:   blockA.header.score,
+          goals:   blockA.header.goals,
+          behinds: blockA.header.behinds,
+          players: blockA.players,
+        },
+        teamB: {
+          key:     blockB.header.teamKey,
+          name:    blockB.header.canonical.names[0],
+          score:   blockB.header.score,
+          goals:   blockB.header.goals,
+          behinds: blockB.header.behinds,
+          players: blockB.players,
+        },
+      });
     } catch (e) {
-      console.warn(`[parseRoundScores] Skipped a table: ${e.message}`);
+      console.warn(`[parseRoundScores] Skipped outer table ${tIdx}: ${e.message}`);
     }
   });
 
   return result;
+}
+
+/**
+ * Extract player records from the inner per-team player table. Each
+ * player row is a <tr> whose first cell contains an <a href="/player/...">.
+ * The next 5 <td>s after that link are DT/SC/Y!/FR/GS — we only consume
+ * DT (col 1) and SC (col 2).
+ */
+function collectPlayersFromInnerTable($, innerTable) {
+  const players = [];
+  if (!innerTable || innerTable.length === 0) return players;
+
+  innerTable.find('tr').each((_, tr) => {
+    try {
+      const cells = $(tr).find('td');
+      if (!cells.length) return; // header row (<th>s only) — skip
+
+      const link = cells.first().find('a[href*="/player/"]');
+      if (!link.length) return;
+
+      const name = link.text().trim();
+      const href = link.attr('href') || '';
+      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+      if (!name) return;
+
+      const dt = parseInt(cells.eq(1).text().trim(), 10);
+      const sc = parseInt(cells.eq(2).text().trim(), 10);
+      if (Number.isNaN(dt) || Number.isNaN(sc)) return;
+
+      players.push({
+        id:      slug || `player_${players.length}`,
+        jersey:  null,
+        name,
+        pos:     null,
+        score:   dt,
+        scoreDT: dt,
+        scoreSC: sc,
+        stats:   emptyStats(),
+      });
+    } catch (e) {
+      // skip individual row failures
+    }
+  });
+
+  return players;
 }
 
 function parseTeamHeader(text) {
@@ -584,81 +663,82 @@ function collectPlayersInRange($, cells, start, end) {
 /**
  * Parse fixture.php and extract every game in the given round.
  *
- * IMPLEMENTATION NOTE — DEFENSIVE AGAINST MALFORMED HTML:
- *   FanFooty's pages are PHP-generated and may emit `<td>` directly inside
- *   `<table>` without `<tr>` wrappers. cheerio (parse5) preserves these
- *   foster-parented cells but they're not visible to `$('tr').each()`.
+ * VERIFIED PRODUCTION STRUCTURE: One <table> with ~269 <tr>s. Standard
+ * row layout when complete is [Day][Date][Opponents][Ground][Time]. Some
+ * rows omit Day and Date when they're the same as the row above —
+ * inheriting from the previous game.
  *
- *   So we walk the flat cell sequence (all <td> in document order) and
- *   reconstruct logical rows by anchoring on cells containing " vs ".
- *   For each `vs` cell at index i, we look at:
- *     · cells[i-2] = day name (e.g. "Saturday") or blank
- *     · cells[i-1] = date (e.g. "April 30") or blank — inherit from
- *                    most recent non-blank if blank
- *     · cells[i+1] = venue
- *     · cells[i+2] = time
- *   "Round N" header cells, found by a regex on cell text, set the
- *   currentRound that subsequent vs cells belong to.
+ * Round headers appear as rows whose first cell text starts with "Round N"
+ * (or "Round HA", "Round P1" for preseason/HA which we ignore by checking
+ * that the round token parses as an integer).
+ *
+ * Strategy:
+ *   · Walk every <tr> in the document
+ *   · If the row's first cell starts with "Round N", set currentRound = N
+ *   · Otherwise, look for a cell containing " vs " — that's a game row
+ *   · Day and date cells are at vsIdx-2 and vsIdx-1 respectively;
+ *     venue at vsIdx+1, time at vsIdx+2. Use last-seen values for
+ *     blank day/date cells (consecutive same-day games).
  */
 function parseFixtureRound($, targetRound) {
   const games = [];
-
-  // Get every <td> in document order, regardless of <tr> structure
-  const allCells = $('td').toArray();
-  if (!allCells.length) return games;
-
   let currentRound = 0;
   let lastDay  = '';
   let lastDate = '';
 
-  for (let i = 0; i < allCells.length; i++) {
-    const text = $(allCells[i]).text().trim();
+  $('tr').each((_, row) => {
+    const $row = $(row);
+    const cells = $row.find('td');
+    if (!cells.length) return;
 
-    // Round header detection — be liberal about what comes after "Round"
-    // since FanFooty has both numeric (Round 1, Round 8) and prefixed
-    // (Round HA, Round P1) variants. We only consider numeric ones in scope.
-    const roundMatch = text.match(/^Round\s+(\w+)\b/i);
+    const firstText = $(cells[0]).text().trim();
+
+    // Round header? Match "Round N" where N is a token; only numeric N
+    // counts as a real round (skips Round P1, Round HA, etc).
+    const roundMatch = firstText.match(/^Round\s+(\w+)/i);
     if (roundMatch) {
       const n = parseInt(roundMatch[1], 10);
       currentRound = Number.isNaN(n) ? -1 : n;
-      // New round means we shouldn't carry over date inheritance
       lastDay = ''; lastDate = '';
-      continue;
+      return;
     }
 
-    // Skip non-vs cells
-    if (!text.includes(' vs ')) continue;
+    if (currentRound !== targetRound) return;
 
-    // We've found a game cell. Only process if we're in the target round.
-    if (currentRound !== targetRound) continue;
+    // Find the cell containing " vs " — that's the game opponents cell.
+    let vsIdx = -1;
+    cells.each((idx, cell) => {
+      if ($(cell).text().includes(' vs ')) { vsIdx = idx; return false; }
+    });
+    if (vsIdx === -1) return;
 
     try {
-      const vsParts = text.split(/\s+vs\s+/);
-      if (vsParts.length < 2) continue;
+      const opponentsText = $(cells[vsIdx]).text().trim();
+      const vsParts = opponentsText.split(/\s+vs\s+/);
+      if (vsParts.length < 2) return;
 
       const teamA = findTeamByAnyName(vsParts[0].trim());
       const teamB = findTeamByAnyName(vsParts[1].trim());
-      if (!teamA || !teamB) continue;
+      if (!teamA || !teamB) return;
 
-      // Look at neighbouring cells. These offsets assume the standard
-      // FanFooty fixture layout: [day][date][opponents][ground][time]
-      const dayCell  = i >= 2 ? $(allCells[i - 2]).text().trim() : '';
-      const dateCell = i >= 1 ? $(allCells[i - 1]).text().trim() : '';
-      const venue = i + 1 < allCells.length ? $(allCells[i + 1]).text().trim() : '';
-      const time  = i + 2 < allCells.length ? $(allCells[i + 2]).text().trim() : '';
+      // Day/date: usually at vsIdx-2 and vsIdx-1. If those cells are
+      // blank, inherit from the most recent non-blank values.
+      let dayText  = '';
+      let dateText = '';
+      if (vsIdx >= 2) {
+        dayText  = $(cells[vsIdx - 2]).text().trim();
+        dateText = $(cells[vsIdx - 1]).text().trim();
+      } else if (vsIdx === 1) {
+        dateText = $(cells[0]).text().trim();
+      }
 
-      // Day/date inheritance: if blank, reuse last non-blank values.
-      // BUT only inherit if the cell is genuinely blank — not if it contains
-      // some other text we don't recognize.
-      let dayText = dayCell || lastDay;
-      let dateText = dateCell || lastDate;
+      if (!dayText)  dayText  = lastDay;
+      if (!dateText) dateText = lastDate;
+      if (dayText)   lastDay  = dayText;
+      if (dateText)  lastDate = dateText;
 
-      // Only update inheritance vars when we got real day/date (not when
-      // the dayCell was the previous game's venue or some other artifact).
-      // Heuristic: a day cell looks like "Monday".."Sunday"; a date cell
-      // looks like "Month NN" or "NN Month".
-      if (/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i.test(dayCell)) lastDay = dayCell;
-      if (/^[A-Za-z]+\s+\d{1,2}$|^\d{1,2}\s+[A-Za-z]+$/.test(dateCell)) lastDate = dateCell;
+      const venue = cells.length > vsIdx + 1 ? $(cells[vsIdx + 1]).text().trim() : '';
+      const time  = cells.length > vsIdx + 2 ? $(cells[vsIdx + 2]).text().trim() : '';
 
       games.push({
         teamAKey: teamA.key,
@@ -675,9 +755,9 @@ function parseFixtureRound($, targetRound) {
         kickoffMs: parseKickoffMs(dayText, dateText, time),
       });
     } catch (e) {
-      console.warn('[parseFixtureRound] Skipped a vs cell:', e.message);
+      console.warn('[parseFixtureRound] Skipped row:', e.message);
     }
-  }
+  });
 
   return games;
 }
