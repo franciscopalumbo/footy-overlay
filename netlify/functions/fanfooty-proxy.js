@@ -346,12 +346,15 @@ function dumpDiagnostics(htmls, parsers) {
       const $td = $scores(td);
       const ownText = $td.clone().children().remove().end().text().trim();
       const innerTable = $td.find('table').first();
-      const innerRows = innerTable.find('tr').length;
+      const innerRows = innerTable.find('tr');
       const innerPlayerLinks = innerTable.find('a[href*="/player/"]').length;
+      const firstRowText = innerRows.eq(0).text().trim().replace(/\s+/g, ' ').slice(0, 60);
+      const firstRowThText = innerRows.eq(0).find('th').first().text().trim().slice(0, 60);
       console.log(
         `[DEBUG] outer[${tIdx}].cell[${cIdx}] ` +
         `ownText="${ownText.slice(0, 50)}" ` +
-        `innerRows=${innerRows} innerPlayerLinks=${innerPlayerLinks}`,
+        `innerRows=${innerRows.length} innerPlayerLinks=${innerPlayerLinks} ` +
+        `firstRow="${firstRowText}" firstRowTh="${firstRowThText}"`,
       );
     });
   });
@@ -448,88 +451,78 @@ function parseHomepageGames($) {
  * Parse roundscores.php into a Map<pairKey, GameScores>.
  *
  * VERIFIED PRODUCTION HTML STRUCTURE (from diagnostic logs, 2 May 2026):
- *   Each game is rendered as an OUTER <table> containing one <tr> with
- *   TWO <td> team-cells. Each team-cell contains:
- *     · plain text "TeamName: G.B.T" directly inside the <td>
- *     · an INNER <table> whose <tr><td> rows are the player score rows
+ *   Each game is rendered as one OUTER <table> containing one <tr> with
+ *   THREE direct <td> cells: [teamA wrapper][spacer][teamB wrapper].
+ *   Each team-wrapper cell contains an INNER <table> whose FIRST row is
+ *   the team header (a single <th> spanning all columns, containing text
+ *   like "Collingwood: 15.3.93") and whose subsequent rows are player
+ *   rows with <td> cells for name+scores.
  *
- *   Example shape:
- *     <table>                                      <-- outer game table
+ *     <table>                                <-- outer game table
  *       <tr>
- *         <td>                                     <-- team A cell
- *           Collingwood: 15.3.93
- *           <table>                                <-- inner player table
- *             <tr><th>Player</th>...</tr>          (header row)
- *             <tr>
- *               <td><a href="/player/nick-daicos">Nick Daicos</a></td>
- *               <td>124</td><td>103</td>...
- *             </tr>
+ *         <td>                               <-- cell[0] = team A wrapper
+ *           <table>                          <-- inner team A table
+ *             <tr><th colspan="6">Collingwood: 15.3.93</th></tr>  <-- header
+ *             <tr><td><a href="...">Nick Daicos</a></td>
+ *                 <td>124</td><td>103</td>...</tr>                <-- player
  *             ...
  *           </table>
  *         </td>
- *         <td>                                     <-- team B cell
- *           Hawthorn: 13.15.93
+ *         <td>&nbsp;</td>                    <-- cell[1] = spacer
+ *         <td>                               <-- cell[2] = team B wrapper
  *           <table>...</table>
  *         </td>
  *       </tr>
  *     </table>
  *
- * Counts confirm this: 3 games × (1 outer + 2 inner) = 9 tables, which
- * matches the production diagnostic `tables=9`.
+ *   Diagnostic confirmed: 3 outer tables (3 games), each with 3 direct
+ *   team cells. cell[0] and cell[2] each have innerRows=24 with 23 player
+ *   links — the 24th row being the header. cell[1] has innerRows=0.
  *
  * Algorithm:
- *   1. Find OUTER tables — those with no <table> ancestor.
- *   2. For each outer table, get its direct team-cells (children of the
- *      outer <tr>'s <td>).
- *   3. For each team-cell, extract the cell's OWN text (not descendants)
- *      to get the "TeamName: G.B.T" header — using clone+remove children.
- *   4. The inner <table> inside the cell holds player rows. Each player
- *      row is a <tr> with a <td><a/></td> as the first cell, followed by
- *      5 numeric <td>s.
- *   5. Pair the two team-cells per outer table — that's one game.
+ *   1. Walk OUTER tables — those with no <table> ancestor.
+ *   2. Get direct child cells of the outer table's row.
+ *   3. For each non-empty cell (skip spacer at cell[1]), find the FIRST
+ *      <table> inside, extract:
+ *        · header text from the first <tr> — try <th> first, fall back
+ *          to .text() of the entire first row
+ *        · players from subsequent <tr>s containing /player/ links
+ *   4. Pair the two teams found per outer table — that's one game.
  */
 function parseRoundScores($) {
   const result = new Map();
 
-  // Outer tables only — skip nested player tables.
   const outerTables = $('table').filter((_, t) => $(t).parents('table').length === 0);
 
   outerTables.each((tIdx, table) => {
     try {
-      // Direct child cells of the outer table's <tr>. Use .children() to
-      // walk one level deep so nested-table cells aren't included.
-      // Account for both <thead/tbody> and direct <tr> children.
+      // Get direct cells of the outer row. cheerio (slim/htmlparser2) does
+      // NOT auto-inject <tbody>, so .children('tr') is reliable; we also
+      // try the <tbody> path defensively in case parse5 or future versions
+      // add it.
       const $table = $(table);
       let teamCells = $table.children('tbody').children('tr').children('td');
       if (teamCells.length === 0) {
         teamCells = $table.children('tr').children('td');
       }
-      // Some rows might be inside nested <thead>; harmless but include them
-      if (teamCells.length === 0) {
-        teamCells = $table.children('thead').children('tr').children('td');
-      }
+      if (teamCells.length === 0) return;
 
-      // We expect exactly 2 team cells per game table. Skip tables with
-      // any other count — those are decorative/layout tables.
-      if (teamCells.length !== 2) return;
-
+      // Extract a (header, players) block from each cell that contains
+      // a nested table. Cells that are empty or are pure spacers yield null.
       const blocks = [];
-      teamCells.each((_, td) => {
-        const $td = $(td);
-
-        // "Own text" = direct text nodes only, excluding descendant text.
-        // Trick: clone, remove all child elements, read text.
-        const ownText = $td.clone().children().remove().end().text().trim();
-        const headerInfo = parseTeamHeader(ownText);
-        if (!headerInfo) return;
-
-        // Inner player table — find FIRST <table> descendant.
-        const innerTable = $td.find('table').first();
-        const players = collectPlayersFromInnerTable($, innerTable);
-        blocks.push({ header: headerInfo, players });
+      teamCells.each((cIdx, td) => {
+        const block = extractTeamBlock($, $(td));
+        if (block) blocks.push(block);
       });
 
-      if (blocks.length !== 2) return;
+      if (blocks.length < 2) return;
+
+      // Pair the first two team blocks. If a layout ever produces more
+      // than 2 (unlikely), we still take the first pair as the game and
+      // log the leftover for diagnosis.
+      if (blocks.length > 2) {
+        console.warn(`[parseRoundScores] outer[${tIdx}] yielded ${blocks.length} blocks, using first 2`);
+      }
 
       const [blockA, blockB] = blocks;
       const key = pairKey(blockA.header.teamKey, blockB.header.teamKey);
@@ -560,48 +553,83 @@ function parseRoundScores($) {
 }
 
 /**
- * Extract player records from the inner per-team player table. Each
- * player row is a <tr> whose first cell contains an <a href="/player/...">.
- * The next 5 <td>s after that link are DT/SC/Y!/FR/GS — we only consume
- * DT (col 1) and SC (col 2).
+ * Extract a {header, players} block from an outer team-wrapper cell.
+ * Returns null if the cell doesn't contain a recognisable team table —
+ * which is normal for spacer cells.
+ *
+ * The team header lives in the FIRST <tr> of the nested table, typically
+ * as a single <th> with the team name and score (e.g. "Collingwood: 15.3.93").
+ * We try the row's <th> text first, fall back to the row's combined text.
+ *
+ * Player rows are subsequent <tr>s where the first cell contains an <a>
+ * pointing at /player/{slug}.
  */
-function collectPlayersFromInnerTable($, innerTable) {
-  const players = [];
-  if (!innerTable || innerTable.length === 0) return players;
+function extractTeamBlock($, $cell) {
+  const innerTable = $cell.find('table').first();
+  if (innerTable.length === 0) return null;
 
-  innerTable.find('tr').each((_, tr) => {
-    try {
-      const cells = $(tr).find('td');
-      if (!cells.length) return; // header row (<th>s only) — skip
+  const innerRows = innerTable.find('tr');
+  if (innerRows.length === 0) return null;
 
-      const link = cells.first().find('a[href*="/player/"]');
-      if (!link.length) return;
-
-      const name = link.text().trim();
-      const href = link.attr('href') || '';
-      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
-      if (!name) return;
-
-      const dt = parseInt(cells.eq(1).text().trim(), 10);
-      const sc = parseInt(cells.eq(2).text().trim(), 10);
-      if (Number.isNaN(dt) || Number.isNaN(sc)) return;
-
-      players.push({
-        id:      slug || `player_${players.length}`,
-        jersey:  null,
-        name,
-        pos:     null,
-        score:   dt,
-        scoreDT: dt,
-        scoreSC: sc,
-        stats:   emptyStats(),
-      });
-    } catch (e) {
-      // skip individual row failures
+  // --- Find first non-empty row (header row) ---
+  let $headerRow = null;
+  for (let i = 0; i < innerRows.length; i++) {
+    const txt = $(innerRows[i]).text().trim();
+    if (txt.length > 0) {
+      $headerRow = $(innerRows[i]);
+      break;
     }
+  }
+  if (!$headerRow) return null;
+
+  // --- Extract header text from <th>, <td>, or fallback ---
+  const headerText =
+    $headerRow.find('th').text().trim() ||
+    $headerRow.find('td').text().trim() ||
+    $headerRow.text().trim();
+
+  const headerInfo = parseTeamHeader(headerText);
+  if (!headerInfo) return null;
+
+  // --- Parse players after header row ---
+  const players = [];
+  let started = false;
+
+  innerRows.each((_, tr) => {
+    const $tr = $(tr);
+
+    if (!started) {
+      if ($tr.is($headerRow)) started = true;
+      return;
+    }
+
+    const cells = $tr.find('td');
+    if (cells.length < 3) return;
+
+    const link = cells.eq(0).find('a[href*="/player/"]');
+    if (!link.length) return;
+
+    const name = link.text().trim();
+    const href = link.attr('href') || '';
+    const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+
+    const dt = parseInt(cells.eq(1).text().trim(), 10);
+    const sc = parseInt(cells.eq(2).text().trim(), 10);
+    if (Number.isNaN(dt) || Number.isNaN(sc)) return;
+
+    players.push({
+      id:      slug || `player_${players.length}`,
+      jersey:  null,
+      name,
+      pos:     null,
+      score:   dt,
+      scoreDT: dt,
+      scoreSC: sc,
+      stats:   emptyStats(),
+    });
   });
 
-  return players;
+  return { header: headerInfo, players };
 }
 
 function parseTeamHeader(text) {
@@ -688,20 +716,36 @@ function parseFixtureRound($, targetRound) {
 
   $('tr').each((_, row) => {
     const $row = $(row);
-    const cells = $row.find('td');
-    if (!cells.length) return;
+    const tdCells = $row.find('td');
+    const thCells = $row.find('th');
 
-    const firstText = $(cells[0]).text().trim();
-
-    // Round header? Match "Round N" where N is a token; only numeric N
-    // counts as a real round (skips Round P1, Round HA, etc).
-    const roundMatch = firstText.match(/^Round\s+(\w+)/i);
-    if (roundMatch) {
-      const n = parseInt(roundMatch[1], 10);
-      currentRound = Number.isNaN(n) ? -1 : n;
-      lastDay = ''; lastDate = '';
-      return;
+    // Round header detection: FanFooty's production HTML renders round
+    // headers using <th> ("Round 8"). Some pages may use <td>. Check both.
+    // Try <th> first; fall back to <td>.
+    if (thCells.length > 0) {
+      const firstHeaderText = $(thCells[0]).text().trim();
+      const roundMatch = firstHeaderText.match(/^Round\s+(\w+)/i);
+      if (roundMatch) {
+        const n = parseInt(roundMatch[1], 10);
+        currentRound = Number.isNaN(n) ? -1 : n;
+        lastDay = ''; lastDate = '';
+        return;
+      }
     }
+    if (tdCells.length > 0) {
+      const firstCellText = $(tdCells[0]).text().trim();
+      const roundMatch = firstCellText.match(/^Round\s+(\w+)/i);
+      if (roundMatch) {
+        const n = parseInt(roundMatch[1], 10);
+        currentRound = Number.isNaN(n) ? -1 : n;
+        lastDay = ''; lastDate = '';
+        return;
+      }
+    }
+
+    // Game row: must have <td>s (game rows always use <td>, not <th>)
+    if (!tdCells.length) return;
+    const cells = tdCells;
 
     if (currentRound !== targetRound) return;
 
