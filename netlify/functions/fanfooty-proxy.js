@@ -694,45 +694,6 @@ function parseTeamHeader(text) {
   return { teamKey: canonical.key, canonical, goals, behinds, score };
 }
 
-function collectPlayersInRange($, cells, start, end) {
-  const players = [];
-
-  for (let i = start; i < end; i++) {
-    const $cell = $(cells[i]);
-    const link = $cell.find('a[href*="/player/"]');
-    if (!link.length) continue;
-
-    try {
-      const name = link.text().trim();
-      const href = link.attr('href') || '';
-      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
-      if (!name) continue;
-
-      const dtText = $(cells[i + 1]).text().trim();
-      const scText = $(cells[i + 2]).text().trim();
-      const dt = parseInt(dtText, 10);
-      const sc = parseInt(scText, 10);
-
-      if (Number.isNaN(dt) || Number.isNaN(sc)) continue;
-
-      players.push({
-        id:      slug || `player_${players.length}`,
-        jersey:  null,
-        name,
-        pos:     null,
-        score:   dt,
-        scoreDT: dt,
-        scoreSC: sc,
-        stats:   emptyStats(),
-      });
-    } catch (e) {
-      // skip
-    }
-  }
-
-  return players;
-}
-
 // ─── FIXTURE PARSER ───────────────────────────────────────────────────────────
 
 /**
