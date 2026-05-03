@@ -618,21 +618,46 @@ function parseRoundScores($) {
  */
 function extractTeamBlock($, $cell) {
   const innerTable = $cell.find('table').first();
+  console.log(`[DEBUG extractTeamBlock] innerTable found: ${innerTable.length > 0}`);
   if (innerTable.length === 0) return null;
 
-  // ── Team header: outer cell text minus the inner table ───────────────────
-  const $clone = $cell.clone();
-  $clone.find('table').remove();
-  const headerText = $clone.text().trim();
+  let headerText = innerTable.children('caption').text().trim();
+  console.log(`[DEBUG extractTeamBlock] caption text: "${headerText}"`);
+
+  if (!headerText) {
+    const $clone = $cell.clone();
+    $clone.find('table').remove();
+    headerText = $clone.text().trim();
+    console.log(`[DEBUG extractTeamBlock] fallback headerText: "${headerText.slice(0, 60)}"`);
+  }
+
   const headerInfo = parseTeamHeader(headerText);
+  console.log(`[DEBUG extractTeamBlock] parseTeamHeader result: ${JSON.stringify(headerInfo)}`);
   if (!headerInfo) return null;
 
-  // ── Players: all <tr>s in the inner table that have a /player/ link ──────
+  // Diagnostic probe: log the first 3 rows so we can see what the row
+  // walker is actually seeing — cell counts, presence of /player/ links,
+  // and the literal text of the first cell. This tells us whether row
+  // extraction will succeed once header extraction succeeds.
+  innerTable.find('tr').each((i, tr) => {
+    const cells = $(tr).find('td');
+    const link = cells.first().find('a[href*="/player/"]');
+    if (i < 3) {
+      console.log(
+        `[DEBUG extractTeamBlock] row ${i}: ` +
+        `cells=${cells.length}, ` +
+        `hasPlayerLink=${link.length > 0}, ` +
+        `firstCellText="${cells.first().text().trim().slice(0, 30)}"`
+      );
+    }
+  });
+
+  // ── Player extraction (unchanged) ────────────────────────────────────────
   const players = [];
   innerTable.find('tr').each((_, tr) => {
     try {
       const cells = $(tr).find('td');
-      if (!cells.length) return; // <th> header row — skip
+      if (!cells.length) return;
 
       const link = cells.first().find('a[href*="/player/"]');
       if (!link.length) return;
@@ -661,6 +686,7 @@ function extractTeamBlock($, $cell) {
     }
   });
 
+  console.log(`[DEBUG extractTeamBlock] extracted ${players.length} players for "${headerInfo.canonical.names[0]}"`);
   return { header: headerInfo, players };
 }
 
