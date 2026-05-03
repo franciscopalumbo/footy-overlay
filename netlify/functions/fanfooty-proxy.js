@@ -377,6 +377,27 @@ function dumpDiagnostics(htmls, parsers) {
   const totalVs = $fixture('td').filter((_, c) => $fixture(c).text().includes(' vs ')).length;
   console.log(`[DEBUG] fixture: ${totalVs} cells contain " vs " total`);
 
+  // ── Critical probe: what extractTeamBlock actually sees ──────────────────
+  // Dumps the raw text that parseTeamHeader will be called with for the
+  // first non-spacer cell of each outer table. This directly shows whether
+  // "Collingwood: 15.3.93" is present after removing the inner table.
+  console.log('[DEBUG] --- extractTeamBlock input probe ---');
+  const outerProbe = $scores('table').filter((_, t) => $scores(t).parents('table').length === 0);
+  outerProbe.each((tIdx, table) => {
+    const cells = $scores(table).children('tbody').children('tr').children('td')
+      .add($scores(table).children('tr').children('td'));
+    cells.each((cIdx, td) => {
+      const $td = $scores(td);
+      // Reproduce exactly what extractTeamBlock does
+      const $clone = $td.clone();
+      $clone.find('table').remove();
+      const fullTextMinusTable = $clone.text().trim();
+      if (fullTextMinusTable) { // only log non-empty cells
+        console.log(`[DEBUG] probe outer[${tIdx}].cell[${cIdx}] fullTextMinusTable="${fullTextMinusTable.slice(0, 80)}"`);
+      }
+    });
+  });
+
   // ── Homepage: live link inspection ───────────────────────────────────────
   console.log('[DEBUG] --- homepage live links (first 5) ---');
   $home('a[href*="/live/"]').slice(0, 5).each((idx, el) => {
