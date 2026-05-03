@@ -512,6 +512,25 @@ function parseRoundScores($) {
       const blocks = [];
       teamCells.each((cIdx, td) => {
         const block = extractTeamBlock($, $(td));
+        if (process.env.FANFOOTY_DEBUG === 'true') {
+          if (block) {
+            console.log(
+              `[DEBUG] extract outer[${tIdx}].cell[${cIdx}] → ${block.header.canonical.names[0]} ` +
+              `${block.header.goals}.${block.header.behinds}.${block.header.score}, ` +
+              `${block.players.length} players`,
+            );
+          } else {
+            // Tell us what was in the cell that we rejected
+            const innerTable = $(td).find('table').first();
+            const rowCount = innerTable.find('tr').length;
+            const linkCount = innerTable.find('a[href*="/player/"]').length;
+            const firstRowText = innerTable.find('tr').eq(0).text().trim().replace(/\s+/g, ' ').slice(0, 80);
+            console.log(
+              `[DEBUG] extract outer[${tIdx}].cell[${cIdx}] → null ` +
+              `(rows=${rowCount}, links=${linkCount}, firstRow="${firstRowText}")`,
+            );
+          }
+        }
         if (block) blocks.push(block);
       });
 
@@ -557,12 +576,15 @@ function parseRoundScores($) {
  * Returns null if the cell doesn't contain a recognisable team table —
  * which is normal for spacer cells.
  *
- * The team header lives in the FIRST <tr> of the nested table, typically
- * as a single <th> with the team name and score (e.g. "Collingwood: 15.3.93").
- * We try the row's <th> text first, fall back to the row's combined text.
+ * STRATEGY:
+ *   We don't assume the header is in any particular row. Instead, we walk
+ *   EVERY <tr> in the inner table and:
+ *     · If the row's text matches the "Name: G.B(.T)" pattern → header.
+ *     · If the row's first <td> has a /player/ link → player row.
+ *     · Otherwise (column-labels row, separator) → ignore.
  *
- * Player rows are subsequent <tr>s where the first cell contains an <a>
- * pointing at /player/{slug}.
+ *   This is robust to header variations (in <th> vs <td>, in row 0 vs N,
+ *   alone or alongside column labels, with or without colspan).
  */
 function extractTeamBlock($, $cell) {
   const innerTable = $cell.find('table').first();
@@ -571,69 +593,75 @@ function extractTeamBlock($, $cell) {
   const innerRows = innerTable.find('tr');
   if (innerRows.length === 0) return null;
 
-  // --- Find first non-empty row (header row) ---
-  let $headerRow = null;
-  for (let i = 0; i < innerRows.length; i++) {
-    const txt = $(innerRows[i]).text().trim();
-    if (txt.length > 0) {
-      $headerRow = $(innerRows[i]);
-      break;
-    }
-  }
-  if (!$headerRow) return null;
-
-  // --- Extract header text from <th>, <td>, or fallback ---
-  const headerText =
-    $headerRow.find('th').text().trim() ||
-    $headerRow.find('td').text().trim() ||
-    $headerRow.text().trim();
-
-  const headerInfo = parseTeamHeader(headerText);
-  if (!headerInfo) return null;
-
-  // --- Parse players after header row ---
+  let headerInfo = null;
   const players = [];
-  let started = false;
 
-  innerRows.each((_, tr) => {
+  innerRows.each((rIdx, tr) => {
     const $tr = $(tr);
 
-    if (!started) {
-      if ($tr.is($headerRow)) started = true;
-      return;
+    // Try header parse from full row text (covers <th>, <td>, mixed)
+    if (!headerInfo) {
+      const fullText = $tr.text().trim();
+      const candidate = parseTeamHeader(fullText);
+      if (candidate) {
+        headerInfo = candidate;
+        return; // header rows aren't player rows
+      }
     }
 
-    const cells = $tr.find('td');
-    if (cells.length < 3) return;
+    // Try player-row parse: first <td> has a /player/ link
+    try {
+      const cells = $tr.find('td');
+      if (!cells.length) return;
 
-    const link = $tr.find('a[href*="/player/"]').first();
-    if (!link.length) return;
+      const link = cells.first().find('a[href*="/player/"]');
+      if (!link.length) return;
 
-    const name = link.text().trim();
-    const href = link.attr('href') || '';
-    const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+      const name = link.text().trim();
+      const href = link.attr('href') || '';
+      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+      if (!name) return;
 
-    const dt = parseInt(cells.eq(1).text().trim(), 10);
-    const sc = parseInt(cells.eq(2).text().trim(), 10);
-    if (Number.isNaN(dt) || Number.isNaN(sc)) return;
+      const dt = parseInt(cells.eq(1).text().trim(), 10);
+      const sc = parseInt(cells.eq(2).text().trim(), 10);
+      if (Number.isNaN(dt) || Number.isNaN(sc)) return;
 
-    players.push({
-      id:      slug || `player_${players.length}`,
-      jersey:  null,
-      name,
-      pos:     null,
-      score:   dt,
-      scoreDT: dt,
-      scoreSC: sc,
-      stats:   emptyStats(),
-    });
+      players.push({
+        id:      slug || `player_${players.length}`,
+        jersey:  null,
+        name,
+        pos:     null,
+        score:   dt,
+        scoreDT: dt,
+        scoreSC: sc,
+        stats:   emptyStats(),
+      });
+    } catch (e) {
+      // skip malformed rows silently
+    }
   });
 
+  if (!headerInfo) return null;
   return { header: headerInfo, players };
 }
 
+/**
+ * Parse a team header string like "Brisbane: 17.17.119" or
+ * "Collingwood: 15.3.93" into structured data.
+ *
+ * Permissive on input: the team-name + score pattern can appear anywhere
+ * in the text (no `$` anchor) so trailing whitespace, newlines, status
+ * badges ("FINAL"), or column labels concatenated by .text() recursion
+ * don't break the match. We anchor to `^` so we still match the team
+ * name from the START of the text — preventing player-row text from
+ * accidentally matching when concatenated.
+ *
+ * Returns { teamKey, canonical, goals, behinds, score } or null.
+ */
 function parseTeamHeader(text) {
-  const m = text.match(/^(.+?):\s*(\d+)\.(\d+)(?:\.(\d+))?$/);
+  if (!text) return null;
+  // Match leading "Name: G.B" or "Name: G.B.T", allowing trailing content
+  const m = text.match(/^([A-Za-z][A-Za-z .'\-]+?):\s*(\d+)\.(\d+)(?:\.(\d+))?\b/);
   if (!m) return null;
 
   const rawName = m[1].trim();
