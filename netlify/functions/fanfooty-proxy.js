@@ -573,46 +573,45 @@ function parseRoundScores($) {
 
 /**
  * Extract a {header, players} block from an outer team-wrapper cell.
- * Returns null if the cell doesn't contain a recognisable team table —
- * which is normal for spacer cells.
+ * Returns null if the cell doesn't contain a recognisable team table.
  *
- * STRATEGY:
- *   We don't assume the header is in any particular row. Instead, we walk
- *   EVERY <tr> in the inner table and:
- *     · If the row's text matches the "Name: G.B(.T)" pattern → header.
- *     · If the row's first <td> has a /player/ link → player row.
- *     · Otherwise (column-labels row, separator) → ignore.
+ * VERIFIED PRODUCTION STRUCTURE (from diagnostic logs, 3 May 2026):
+ *   The team header text ("Collingwood: 15.3.93") lives OUTSIDE the nested
+ *   player table, as a sibling element (likely <b>, <div>, or <a>) before
+ *   the inner <table>. The outer cell's own text is empty, and the inner
+ *   table's first row is the column-labels row ("Player DT SC Y! FR GS"),
+ *   not the team header.
  *
- *   This is robust to header variations (in <th> vs <td>, in row 0 vs N,
- *   alone or alongside column labels, with or without colspan).
+ *   Evidence from logs:
+ *     ownText=""             → header not a bare text node in outer <td>
+ *     firstRow="PlayerDTSC" → header not inside the nested table
+ *     innerPlayerLinks=23   → inner table has only player rows
+ *
+ *   Extraction: clone the outer <td>, remove the inner <table>, call
+ *   .text() on what remains. This yields the header text regardless of
+ *   which wrapper element FanFooty uses (<b>/<div>/<a>/etc).
+ *
+ *   Player rows: inside the inner <table>, every <tr> whose first <td>
+ *   contains a /player/ link. Column-labels rows have <th> not <td> so
+ *   `find('td')` returns 0 and they're skipped automatically.
  */
 function extractTeamBlock($, $cell) {
   const innerTable = $cell.find('table').first();
   if (innerTable.length === 0) return null;
 
-  const innerRows = innerTable.find('tr');
-  if (innerRows.length === 0) return null;
+  // ── Team header: outer cell text minus the inner table ───────────────────
+  const $clone = $cell.clone();
+  $clone.find('table').remove();
+  const headerText = $clone.text().trim();
+  const headerInfo = parseTeamHeader(headerText);
+  if (!headerInfo) return null;
 
-  let headerInfo = null;
+  // ── Players: all <tr>s in the inner table that have a /player/ link ──────
   const players = [];
-
-  innerRows.each((rIdx, tr) => {
-    const $tr = $(tr);
-
-    // Try header parse from full row text (covers <th>, <td>, mixed)
-    if (!headerInfo) {
-      const fullText = $tr.text().trim();
-      const candidate = parseTeamHeader(fullText);
-      if (candidate) {
-        headerInfo = candidate;
-        return; // header rows aren't player rows
-      }
-    }
-
-    // Try player-row parse: first <td> has a /player/ link
+  innerTable.find('tr').each((_, tr) => {
     try {
-      const cells = $tr.find('td');
-      if (!cells.length) return;
+      const cells = $(tr).find('td');
+      if (!cells.length) return; // <th> header row — skip
 
       const link = cells.first().find('a[href*="/player/"]');
       if (!link.length) return;
@@ -641,7 +640,6 @@ function extractTeamBlock($, $cell) {
     }
   });
 
-  if (!headerInfo) return null;
   return { header: headerInfo, players };
 }
 
