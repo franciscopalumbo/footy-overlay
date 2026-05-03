@@ -22,6 +22,21 @@
  * ENDPOINT (via netlify.toml redirect):
  *   GET /api/fanfooty-proxy
  *
+ * ─────────────────────────────────────────────────────────────
+ * SCRAPED DATA SCOPE — IMPORTANT:
+ *
+ *   FanFooty's terms permit scraping the DT and SC fantasy scores only.
+ *   Raw stats (kicks, handballs, marks, tackles, hit-outs, free kicks,
+ *   metres gained, contested possessions, clearances, disposal efficiency,
+ *   time on ground) are OFF LIMITS and are NOT collected.
+ *
+ *   Public match scores in G.B.T format ("Collingwood: 15.3.93") are part
+ *   of the published scoreboard text and are kept on the team object so
+ *   the frontend can display final-score lines. Quarter and time-remaining
+ *   stay null — they live in the JS-rendered matchcentre, which we don't
+ *   scrape.
+ *
+ * ─────────────────────────────────────────────────────────────
  * RESPONSE SHAPE (top-level keys are guaranteed to exist; values may be []):
  *   {
  *     round:         number,
@@ -32,8 +47,17 @@
  *     _error:        string,   // optional: error summary when _fallback=true
  *   }
  *
+ *   Each Game contains:
+ *     teamA / teamB: { name, abbr, color, score, goals, behinds }
+ *     players:       Player[]
+ *
+ *   Each Player is intentionally minimal:
+ *     { id, name, scoreDT, scoreSC, jersey, pos }
+ *   `jersey` and `pos` are always null in this layer — populated, if at
+ *   all, by Layer 2 (matchcentre JSON polling, not yet implemented).
+ *
  * ─────────────────────────────────────────────────────────────
- * ARCHITECTURE — verified against live Round 8 data on 2 May 2026:
+ * ARCHITECTURE — verified against live Round 8 data on 3 May 2026:
  *
  *   FIXTURE.PHP is the source of truth for which games exist in the round.
  *   It is one big <table> covering the whole season. Each round has a
@@ -45,22 +69,16 @@
  *   across rows to fill these in.
  *
  *   ROUNDSCORES.PHP enriches scored games with per-player DT/SC scores.
- *   Each game is rendered as its OWN <table>, NOT as rows-after-header
- *   inside one shared table. Inside each game's table, every cell is in
- *   one logical block — cells flow as:
- *
- *     [TeamA: G.B.T] [Player] [DT] [SC] [Y!] [FR] [GS] [blank]
- *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
- *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
- *     ... more team A players ...
- *     [&nbsp;]
- *     [TeamB: G.B.T] [Player] [DT] [SC] [Y!] [FR] [GS] [blank]
- *     [name link] [dt] [sc] [y!] [fr] [gs] [blank]
- *     ... more team B players ...
- *
- *   We parse cell-by-cell within each <table>, anchoring on team-header
- *   cells (regex match on text) and reading the 5 numeric cells after each
- *   player name link. We do NOT depend on <tr> structure.
+ *   Each game = ONE outer <table> with one <tr> containing THREE direct
+ *   <td> cells: [teamA wrapper] [spacer] [teamB wrapper]. Each wrapper
+ *   contains a nested <table> whose:
+ *     · <caption> holds the team header text e.g. "Collingwood: 15.3.93"
+ *     · first <tr> is column labels: "Player DT SC Y! FR GS" (and "BL"
+ *       as a 7th column for Essendon games only)
+ *     · subsequent <tr>s are player rows: <td>name-link</td><td>DT</td>
+ *       <td>SC</td><td>Y!</td><td>FR</td><td>GS</td>[<td>BL</td>]
+ *   We read DT and SC only — Y!/FR/GS/BL are alternative fantasy systems
+ *   we don't support and are deliberately ignored.
  *
  *   HOMEPAGE renders the current round as a list of <a> elements pointing
  *   to /live/{year}/{id}-{slug}.html. Link text contains kickoff datetime,
@@ -69,9 +87,7 @@
  *   game IDs and the official /live/ URLs.
  *
  *   The matchcentre at /live/{year}/{id}-{slug}.html is JS-rendered. We
- *   do NOT scrape it. quarter, timeRemaining, jersey, position, and raw
- *   stats stay null. Layer 2 (planned) will hit the underlying JSON
- *   polling endpoint once we capture it from a live game with DevTools.
+ *   do NOT scrape it. quarter, timeRemaining, jersey, position stay null.
  *
  * ─────────────────────────────────────────────────────────────
  * RESILIENCE:
@@ -136,8 +152,8 @@ const MOCK_RESPONSE = {
       date: 'Sat 22 Jun', time: '7:25 PM AET',
       status: 'live',
       players: [
-        mockPlayer('dustin-martin', 'Dustin Martin', 'MID',  88,  91),
-        mockPlayer('nick-daicos',   'Nick Daicos',   'MID', 118, 124),
+        mockPlayer('dustin-martin', 'Dustin Martin',  88,  91),
+        mockPlayer('nick-daicos',   'Nick Daicos',   118, 124),
       ],
     },
   ],
@@ -162,25 +178,27 @@ const MOCK_RESPONSE = {
       date: 'Fri 21 Jun', time: '7:50 PM AET',
       status: 'final',
       players: [
-        mockPlayer('clayton-oliver', 'Clayton Oliver', 'MID', 134, 142),
+        mockPlayer('clayton-oliver', 'Clayton Oliver', 134, 142),
       ],
     },
   ],
 };
 
-function mockPlayer(id, name, pos, dt, sc) {
+/**
+ * Build a minimal mock player. Mirrors the live-scraped player shape:
+ * scores only — no raw stats. jersey/pos are null as they're not
+ * scraped in this layer.
+ */
+function mockPlayer(id, name, dt, sc) {
   return {
-    id, jersey: null, name, pos,
-    score: dt, scoreDT: dt, scoreSC: sc,
-    stats: emptyStats(),
-  };
-}
-
-function emptyStats() {
-  return {
-    kk: null, hb: null, mk: null, tk: null, ho: null, fk: null,
-    gb: null, mg: null, cp: null, cl: null,
-    effPct: null, togPct: null,
+    id,
+    name,
+    jersey:  null,
+    pos:     null,
+    score:   dt,    // legacy alias — frontend reads scoreDT/scoreSC, but
+                    // some older code paths fall back to .score
+    scoreDT: dt,
+    scoreSC: sc,
   };
 }
 
@@ -217,13 +235,6 @@ exports.handler = async function (event) {
     const $scores  = cheerio.load(roundScoresHtml);
     const $fixture = cheerio.load(fixtureHtml);
     const $home    = cheerio.load(homepageHtml);
-
-    if (process.env.FANFOOTY_DEBUG === 'true') {
-      dumpDiagnostics(
-        { roundScoresHtml, fixtureHtml, homepageHtml },
-        { $scores, $fixture, $home },
-      );
-    }
 
     const round         = parseRoundNumber($scores);
     const homepageGames = parseHomepageGames($home);
@@ -273,141 +284,6 @@ function jsonHeaders() {
 
 function ok(payload) {
   return { statusCode: 200, headers: jsonHeaders(), body: JSON.stringify(payload) };
-}
-
-// ─── DIAGNOSTICS (only runs when FANFOOTY_DEBUG=true) ─────────────────────────
-
-/**
- * Emit structural information about the three fetched pages so we can
- * trace parser behaviour from Netlify logs without re-fetching live HTML.
- *
- * Output is prefixed with "[DEBUG]" so it can be grep'd. Designed for
- * volume — produces ~100 log lines and should be left OFF in normal
- * operation.
- *
- * What's reported per page:
- *   · response byte length (sanity check: are we getting full HTML?)
- *   · first 500 characters of HTML (sanity check: HTML or error page?)
- *   · table count, td count, tr count, anchor count
- *   · title text and what parseRoundNumber sees
- *
- * What's reported for roundscores specifically:
- *   · per-table cell counts (helps spot empty tables vs game tables)
- *   · first 30 td texts of each table that has ≥7 cells (game candidates)
- *   · which cells match the team-header regex (and what text they had)
- *   · count of <a href*="/player/"> elements
- *
- * What's reported for fixture specifically:
- *   · per-tr first-cell text for the first 80 rows (so we see all round
- *     headers and the first ~70 game rows)
- *   · count of cells containing " vs "
- */
-function dumpDiagnostics(htmls, parsers) {
-  const { roundScoresHtml, fixtureHtml, homepageHtml } = htmls;
-  const { $scores, $fixture, $home } = parsers;
-
-  console.log('[DEBUG] ===== begin diagnostics =====');
-
-  // ── Per-page sanity ──────────────────────────────────────────────────────
-  for (const [label, html, $] of [
-    ['roundscores', roundScoresHtml, $scores],
-    ['fixture',    fixtureHtml,     $fixture],
-    ['homepage',   homepageHtml,    $home],
-  ]) {
-    console.log(`[DEBUG] ${label}: ${html.length} bytes`);
-    // First 500 chars, with newlines collapsed for log readability
-    const head = html.slice(0, 500).replace(/\s+/g, ' ');
-    console.log(`[DEBUG] ${label} head: ${head}`);
-    console.log(
-      `[DEBUG] ${label} counts: ` +
-      `tables=${$('table').length} ` +
-      `trs=${$('tr').length} ` +
-      `tds=${$('td').length} ` +
-      `anchors=${$('a').length} ` +
-      `playerLinks=${$('a[href*="/player/"]').length} ` +
-      `liveLinks=${$('a[href*="/live/"]').length}`,
-    );
-    const title = $('title').text().trim();
-    console.log(`[DEBUG] ${label} title: "${title}"`);
-  }
-
-  // ── Roundscores: per-table inspection ────────────────────────────────────
-  console.log('[DEBUG] --- roundscores tables ---');
-  const outerTables = $scores('table').filter((_, t) => $scores(t).parents('table').length === 0);
-  console.log(`[DEBUG] outer tables (no <table> ancestor): ${outerTables.length}`);
-
-  outerTables.each((tIdx, table) => {
-    const $table = $scores(table);
-    const teamCells = $table.children('tbody').children('tr').children('td')
-      .add($table.children('tr').children('td'));
-    console.log(`[DEBUG] outer[${tIdx}]: ${teamCells.length} direct team cells`);
-
-    teamCells.each((cIdx, td) => {
-      const $td = $scores(td);
-      const ownText = $td.clone().children().remove().end().text().trim();
-      const innerTable = $td.find('table').first();
-      const innerRows = innerTable.find('tr');
-      const innerPlayerLinks = innerTable.find('a[href*="/player/"]').length;
-      const firstRowText = innerRows.eq(0).text().trim().replace(/\s+/g, ' ').slice(0, 60);
-      const firstRowThText = innerRows.eq(0).find('th').first().text().trim().slice(0, 60);
-      console.log(
-        `[DEBUG] outer[${tIdx}].cell[${cIdx}] ` +
-        `ownText="${ownText.slice(0, 50)}" ` +
-        `innerRows=${innerRows.length} innerPlayerLinks=${innerPlayerLinks} ` +
-        `firstRow="${firstRowText}" firstRowTh="${firstRowThText}"`,
-      );
-    });
-  });
-
-  // Also dump all $('table') cell counts for completeness — distinguishes
-  // outer game tables from inner player tables.
-  $scores('table').each((tIdx, table) => {
-    const cells = $scores(table).find('td');
-    console.log(`[DEBUG] table[${tIdx}]: ${cells.length} total cells (find), depth=${$scores(table).parents('table').length}`);
-  });
-
-  // ── Fixture: per-row inspection ──────────────────────────────────────────
-  console.log('[DEBUG] --- fixture rows (first 80) ---');
-  $fixture('tr').slice(0, 80).each((rIdx, row) => {
-    const cells = $fixture(row).find('td');
-    const firstText = cells.length ? $fixture(cells[0]).text().trim().slice(0, 30) : '<no cells>';
-    const vsCount = cells.filter((_, c) => $fixture(c).text().includes(' vs ')).length;
-    console.log(`[DEBUG] tr[${rIdx}]: ${cells.length} cells, first="${firstText}"${vsCount ? ' VS' : ''}`);
-  });
-  const totalVs = $fixture('td').filter((_, c) => $fixture(c).text().includes(' vs ')).length;
-  console.log(`[DEBUG] fixture: ${totalVs} cells contain " vs " total`);
-
-  // ── Critical probe: what extractTeamBlock actually sees ──────────────────
-  // Dumps the raw text that parseTeamHeader will be called with for the
-  // first non-spacer cell of each outer table. This directly shows whether
-  // "Collingwood: 15.3.93" is present after removing the inner table.
-  console.log('[DEBUG] --- extractTeamBlock input probe ---');
-  const outerProbe = $scores('table').filter((_, t) => $scores(t).parents('table').length === 0);
-  outerProbe.each((tIdx, table) => {
-    const cells = $scores(table).children('tbody').children('tr').children('td')
-      .add($scores(table).children('tr').children('td'));
-    cells.each((cIdx, td) => {
-      const $td = $scores(td);
-      // Reproduce exactly what extractTeamBlock does
-      const $clone = $td.clone();
-      $clone.find('table').remove();
-      const fullTextMinusTable = $clone.text().trim();
-      if (fullTextMinusTable) { // only log non-empty cells
-        console.log(`[DEBUG] probe outer[${tIdx}].cell[${cIdx}] fullTextMinusTable="${fullTextMinusTable.slice(0, 80)}"`);
-      }
-    });
-  });
-
-  // ── Homepage: live link inspection ───────────────────────────────────────
-  console.log('[DEBUG] --- homepage live links (first 5) ---');
-  $home('a[href*="/live/"]').slice(0, 5).each((idx, el) => {
-    const $a = $home(el);
-    const href = $a.attr('href') || '';
-    const text = $a.text().replace(/\s+/g, ' ').trim().slice(0, 80);
-    console.log(`[DEBUG] live[${idx}] href="${href}" text="${text}"`);
-  });
-
-  console.log('[DEBUG] ===== end diagnostics =====');
 }
 
 // ─── ROUND NUMBER ─────────────────────────────────────────────────────────────
@@ -471,44 +347,29 @@ function parseHomepageGames($) {
 /**
  * Parse roundscores.php into a Map<pairKey, GameScores>.
  *
- * VERIFIED PRODUCTION HTML STRUCTURE (from diagnostic logs, 2 May 2026):
- *   Each game is rendered as one OUTER <table> containing one <tr> with
- *   THREE direct <td> cells: [teamA wrapper][spacer][teamB wrapper].
- *   Each team-wrapper cell contains an INNER <table> whose FIRST row is
- *   the team header (a single <th> spanning all columns, containing text
- *   like "Collingwood: 15.3.93") and whose subsequent rows are player
- *   rows with <td> cells for name+scores.
+ * VERIFIED PRODUCTION HTML STRUCTURE (3 May 2026):
+ *   Each game = ONE outer <table> with one <tr> containing THREE direct
+ *   <td> cells: [teamA wrapper] [spacer] [teamB wrapper]. Each wrapper
+ *   contains a nested <table> whose:
+ *     · <caption> holds the team header text e.g. "Collingwood: 15.3.93"
+ *     · first <tr> is column labels (rows of <th>)
+ *     · subsequent <tr>s are player rows
  *
- *     <table>                                <-- outer game table
+ *     <table>                                           <-- outer game
  *       <tr>
- *         <td>                               <-- cell[0] = team A wrapper
- *           <table>                          <-- inner team A table
- *             <tr><th colspan="6">Collingwood: 15.3.93</th></tr>  <-- header
- *             <tr><td><a href="...">Nick Daicos</a></td>
- *                 <td>124</td><td>103</td>...</tr>                <-- player
+ *         <td>
+ *           <table>                                     <-- team A nested
+ *             <caption>Collingwood: 15.3.93</caption>   <-- HEADER LIVES HERE
+ *             <tr><th>Player</th><th>DT</th>...</tr>    <-- column labels
+ *             <tr><td><a href=".../player/nick-daicos">Nick Daicos</a></td>
+ *                 <td>124</td><td>103</td>...</tr>      <-- player row
  *             ...
  *           </table>
  *         </td>
- *         <td>&nbsp;</td>                    <-- cell[1] = spacer
- *         <td>                               <-- cell[2] = team B wrapper
- *           <table>...</table>
- *         </td>
+ *         <td>&nbsp;</td>                               <-- spacer
+ *         <td><table>...</table></td>                   <-- team B nested
  *       </tr>
  *     </table>
- *
- *   Diagnostic confirmed: 3 outer tables (3 games), each with 3 direct
- *   team cells. cell[0] and cell[2] each have innerRows=24 with 23 player
- *   links — the 24th row being the header. cell[1] has innerRows=0.
- *
- * Algorithm:
- *   1. Walk OUTER tables — those with no <table> ancestor.
- *   2. Get direct child cells of the outer table's row.
- *   3. For each non-empty cell (skip spacer at cell[1]), find the FIRST
- *      <table> inside, extract:
- *        · header text from the first <tr> — try <th> first, fall back
- *          to .text() of the entire first row
- *        · players from subsequent <tr>s containing /player/ links
- *   4. Pair the two teams found per outer table — that's one game.
  */
 function parseRoundScores($) {
   const result = new Map();
@@ -517,10 +378,6 @@ function parseRoundScores($) {
 
   outerTables.each((tIdx, table) => {
     try {
-      // Get direct cells of the outer row. cheerio (slim/htmlparser2) does
-      // NOT auto-inject <tbody>, so .children('tr') is reliable; we also
-      // try the <tbody> path defensively in case parse5 or future versions
-      // add it.
       const $table = $(table);
       let teamCells = $table.children('tbody').children('tr').children('td');
       if (teamCells.length === 0) {
@@ -528,38 +385,13 @@ function parseRoundScores($) {
       }
       if (teamCells.length === 0) return;
 
-      // Extract a (header, players) block from each cell that contains
-      // a nested table. Cells that are empty or are pure spacers yield null.
       const blocks = [];
-      teamCells.each((cIdx, td) => {
+      teamCells.each((_, td) => {
         const block = extractTeamBlock($, $(td));
-        if (process.env.FANFOOTY_DEBUG === 'true') {
-          if (block) {
-            console.log(
-              `[DEBUG] extract outer[${tIdx}].cell[${cIdx}] → ${block.header.canonical.names[0]} ` +
-              `${block.header.goals}.${block.header.behinds}.${block.header.score}, ` +
-              `${block.players.length} players`,
-            );
-          } else {
-            // Tell us what was in the cell that we rejected
-            const innerTable = $(td).find('table').first();
-            const rowCount = innerTable.find('tr').length;
-            const linkCount = innerTable.find('a[href*="/player/"]').length;
-            const firstRowText = innerTable.find('tr').eq(0).text().trim().replace(/\s+/g, ' ').slice(0, 80);
-            console.log(
-              `[DEBUG] extract outer[${tIdx}].cell[${cIdx}] → null ` +
-              `(rows=${rowCount}, links=${linkCount}, firstRow="${firstRowText}")`,
-            );
-          }
-        }
         if (block) blocks.push(block);
       });
 
       if (blocks.length < 2) return;
-
-      // Pair the first two team blocks. If a layout ever produces more
-      // than 2 (unlikely), we still take the first pair as the game and
-      // log the leftover for diagnosis.
       if (blocks.length > 2) {
         console.warn(`[parseRoundScores] outer[${tIdx}] yielded ${blocks.length} blocks, using first 2`);
       }
@@ -596,63 +428,30 @@ function parseRoundScores($) {
  * Extract a {header, players} block from an outer team-wrapper cell.
  * Returns null if the cell doesn't contain a recognisable team table.
  *
- * VERIFIED PRODUCTION STRUCTURE (from diagnostic logs, 3 May 2026):
- *   The team header text ("Collingwood: 15.3.93") lives OUTSIDE the nested
- *   player table, as a sibling element (likely <b>, <div>, or <a>) before
- *   the inner <table>. The outer cell's own text is empty, and the inner
- *   table's first row is the column-labels row ("Player DT SC Y! FR GS"),
- *   not the team header.
+ * Header source (in order of preference):
+ *   1. <caption> of the nested team table — production layout
+ *   2. Outer <td>'s own text minus the nested table — defensive fallback
+ *      in case FanFooty ever moves the header out of <caption>
  *
- *   Evidence from logs:
- *     ownText=""             → header not a bare text node in outer <td>
- *     firstRow="PlayerDTSC" → header not inside the nested table
- *     innerPlayerLinks=23   → inner table has only player rows
- *
- *   Extraction: clone the outer <td>, remove the inner <table>, call
- *   .text() on what remains. This yields the header text regardless of
- *   which wrapper element FanFooty uses (<b>/<div>/<a>/etc).
- *
- *   Player rows: inside the inner <table>, every <tr> whose first <td>
- *   contains a /player/ link. Column-labels rows have <th> not <td> so
- *   `find('td')` returns 0 and they're skipped automatically.
+ * Player rows: every <tr> in the nested table whose first <td> contains
+ * a /player/ link. The column-labels row uses <th> not <td> so it is
+ * skipped automatically. We read DT (cell 1) and SC (cell 2) only —
+ * Y!/FR/GS/BL trailing columns are alternative fantasy scoring systems
+ * we deliberately ignore.
  */
 function extractTeamBlock($, $cell) {
   const innerTable = $cell.find('table').first();
-  console.log(`[DEBUG extractTeamBlock] innerTable found: ${innerTable.length > 0}`);
   if (innerTable.length === 0) return null;
 
   let headerText = innerTable.children('caption').text().trim();
-  console.log(`[DEBUG extractTeamBlock] caption text: "${headerText}"`);
-
   if (!headerText) {
     const $clone = $cell.clone();
     $clone.find('table').remove();
     headerText = $clone.text().trim();
-    console.log(`[DEBUG extractTeamBlock] fallback headerText: "${headerText.slice(0, 60)}"`);
   }
-
   const headerInfo = parseTeamHeader(headerText);
-  console.log(`[DEBUG extractTeamBlock] parseTeamHeader result: ${JSON.stringify(headerInfo)}`);
   if (!headerInfo) return null;
 
-  // Diagnostic probe: log the first 3 rows so we can see what the row
-  // walker is actually seeing — cell counts, presence of /player/ links,
-  // and the literal text of the first cell. This tells us whether row
-  // extraction will succeed once header extraction succeeds.
-  innerTable.find('tr').each((i, tr) => {
-    const cells = $(tr).find('td');
-    const link = cells.first().find('a[href*="/player/"]');
-    if (i < 3) {
-      console.log(
-        `[DEBUG extractTeamBlock] row ${i}: ` +
-        `cells=${cells.length}, ` +
-        `hasPlayerLink=${link.length > 0}, ` +
-        `firstCellText="${cells.first().text().trim().slice(0, 30)}"`
-      );
-    }
-  });
-
-  // ── Player extraction (unchanged) ────────────────────────────────────────
   const players = [];
   innerTable.find('tr').each((_, tr) => {
     try {
@@ -673,20 +472,18 @@ function extractTeamBlock($, $cell) {
 
       players.push({
         id:      slug || `player_${players.length}`,
-        jersey:  null,
         name,
+        jersey:  null,
         pos:     null,
-        score:   dt,
+        score:   dt,    // legacy alias for older callers
         scoreDT: dt,
         scoreSC: sc,
-        stats:   emptyStats(),
       });
     } catch (e) {
       // skip malformed rows silently
     }
   });
 
-  console.log(`[DEBUG extractTeamBlock] extracted ${players.length} players for "${headerInfo.canonical.names[0]}"`);
   return { header: headerInfo, players };
 }
 
@@ -694,18 +491,10 @@ function extractTeamBlock($, $cell) {
  * Parse a team header string like "Brisbane: 17.17.119" or
  * "Collingwood: 15.3.93" into structured data.
  *
- * Permissive on input: the team-name + score pattern can appear anywhere
- * in the text (no `$` anchor) so trailing whitespace, newlines, status
- * badges ("FINAL"), or column labels concatenated by .text() recursion
- * don't break the match. We anchor to `^` so we still match the team
- * name from the START of the text — preventing player-row text from
- * accidentally matching when concatenated.
- *
  * Returns { teamKey, canonical, goals, behinds, score } or null.
  */
 function parseTeamHeader(text) {
   if (!text) return null;
-  // Match leading "Name: G.B" or "Name: G.B.T", allowing trailing content
   const m = text.match(/^([A-Za-z][A-Za-z .'\-]+?):\s*(\d+)\.(\d+)(?:\.(\d+))?\b/);
   if (!m) return null;
 
@@ -725,22 +514,13 @@ function parseTeamHeader(text) {
 /**
  * Parse fixture.php and extract every game in the given round.
  *
- * VERIFIED PRODUCTION STRUCTURE: One <table> with ~269 <tr>s. Standard
- * row layout when complete is [Day][Date][Opponents][Ground][Time]. Some
- * rows omit Day and Date when they're the same as the row above —
- * inheriting from the previous game.
+ * Standard row layout when complete is [Day][Date][Opponents][Ground][Time].
+ * Some rows omit Day and Date when they're the same as the row above —
+ * we inherit from the previous game in that case.
  *
  * Round headers appear as rows whose first cell text starts with "Round N"
- * (or "Round HA", "Round P1" for preseason/HA which we ignore by checking
+ * (or "Round HA", "Round P1" for preseason which we ignore by checking
  * that the round token parses as an integer).
- *
- * Strategy:
- *   · Walk every <tr> in the document
- *   · If the row's first cell starts with "Round N", set currentRound = N
- *   · Otherwise, look for a cell containing " vs " — that's a game row
- *   · Day and date cells are at vsIdx-2 and vsIdx-1 respectively;
- *     venue at vsIdx+1, time at vsIdx+2. Use last-seen values for
- *     blank day/date cells (consecutive same-day games).
  */
 function parseFixtureRound($, targetRound) {
   const games = [];
@@ -753,9 +533,7 @@ function parseFixtureRound($, targetRound) {
     const tdCells = $row.find('td');
     const thCells = $row.find('th');
 
-    // Round header detection: FanFooty's production HTML renders round
-    // headers using <th> ("Round 8"). Some pages may use <td>. Check both.
-    // Try <th> first; fall back to <td>.
+    // Round header detection — try <th> first (production layout), then <td>.
     if (thCells.length > 0) {
       const firstHeaderText = $(thCells[0]).text().trim();
       const roundMatch = firstHeaderText.match(/^Round\s+(\w+)/i);
@@ -777,13 +555,11 @@ function parseFixtureRound($, targetRound) {
       }
     }
 
-    // Game row: must have <td>s (game rows always use <td>, not <th>)
     if (!tdCells.length) return;
     const cells = tdCells;
 
     if (currentRound !== targetRound) return;
 
-    // Find the cell containing " vs " — that's the game opponents cell.
     let vsIdx = -1;
     cells.each((idx, cell) => {
       if ($(cell).text().includes(' vs ')) { vsIdx = idx; return false; }
@@ -799,8 +575,6 @@ function parseFixtureRound($, targetRound) {
       const teamB = findTeamByAnyName(vsParts[1].trim());
       if (!teamA || !teamB) return;
 
-      // Day/date: usually at vsIdx-2 and vsIdx-1. If those cells are
-      // blank, inherit from the most recent non-blank values.
       let dayText  = '';
       let dateText = '';
       if (vsIdx >= 2) {
