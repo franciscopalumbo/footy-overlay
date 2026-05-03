@@ -2910,15 +2910,6 @@ function openGameDetail(game) {
 
 document.getElementById('game-detail-back').addEventListener('click', () => showView('watch'));
 
-// Stats legend toggle
-document.getElementById('stats-legend-toggle').addEventListener('click', () => {
-  const legend = document.getElementById('stats-legend');
-  const btn    = document.getElementById('stats-legend-toggle');
-  const isOpen = legend.classList.toggle('open');
-  btn.setAttribute('aria-expanded', String(isOpen));
-  btn.style.color = isOpen ? 'var(--accent-live)' : '';
-});
-
 // Begin Overlay
 document.getElementById('btn-begin-overlay').addEventListener('click', () => {
   if (!State.currentGame) return;
