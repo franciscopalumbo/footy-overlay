@@ -3630,9 +3630,13 @@ async function openOverlayPopout() {
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
       const pipWin = await window.documentPictureInPicture.requestWindow({ width: desiredWidth, height: desiredHeight });
       copyStylesToDocument(pipWin.document);
-      pipWin.document.documentElement.style.background = '#0d1117';
+      pipWin.document.documentElement.style.background = 'transparent';
+      pipWin.document.documentElement.style.colorScheme = 'dark';
       pipWin.document.body.style.margin = '0';
-      pipWin.document.body.style.background = '#0d1117';
+      pipWin.document.body.style.padding = '0';
+      pipWin.document.body.style.background = 'transparent';
+      pipWin.document.body.style.overflow = 'hidden';
+      pipWin.document.body.style.display = 'inline-block';
       pipWin.document.body.appendChild(overlay);
       overlay.classList.add('popout');
       overlay.style.left = '0';
@@ -3663,9 +3667,13 @@ async function openOverlayPopout() {
   popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>FootyOverlay</title></head><body></body></html>');
   popup.document.close();
   copyStylesToDocument(popup.document);
-  popup.document.documentElement.style.background = '#0d1117';
+  popup.document.documentElement.style.background = 'transparent';
+  popup.document.documentElement.style.colorScheme = 'dark';
   popup.document.body.style.margin = '0';
-  popup.document.body.style.background = '#0d1117';
+  popup.document.body.style.padding = '0';
+  popup.document.body.style.background = 'transparent';
+  popup.document.body.style.overflow = 'hidden';
+  popup.document.body.style.display = 'inline-block';
   popup.document.body.appendChild(overlay);
   overlay.classList.add('popout');
   overlay.style.left = '0';
