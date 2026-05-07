@@ -3821,12 +3821,15 @@ function showToast(icon, player, action, points, type = 'positive') {
   const pointsHtml = points !== 0
     ? `<span class="toast-points${points < 0 ? ' negative' : ''}">${points > 0 ? '+' : ''}${points}pts</span>`
     : '';
+  const actionHtml = action
+    ? `<div class="toast-action">${escHtml(action)}</div>`
+    : '';
 
   toast.innerHTML = `
     <span class="toast-icon">${icon}</span>
     <div class="toast-content">
       <div class="toast-player">${escHtml(player)}</div>
-      <div class="toast-action">${escHtml(action)}</div>
+      ${actionHtml}
     </div>
     ${pointsHtml}
   `;
@@ -3931,7 +3934,7 @@ function simulateMockData() {
             ? Math.round(SUPERCOACH_POINTS[action.key] || delta)
             : Math.round(AFL_FANTASY_POINTS[action.key] || delta);
           const icon = action.type === 'negative' ? '💀' : '⚡';
-          showToast(icon, formatPlayerName(p.name), action.label, toastDelta, action.type);
+          showToast(icon, formatPlayerName(p.name), '', toastDelta, action.type);
         }
       }
     });
@@ -3956,6 +3959,9 @@ async function pollLiveData() {
   if (State.currentGame) {
     const updated = data.liveGames.find(g => g.id === State.currentGame.id);
     if (updated) {
+      const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+      const scoreOf = (p) => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
+      const trackedIds = new Set(State.customTeams.flatMap(t => t.playerIds));
       const prevPlayers = State.currentGame.players;
       State.currentGame = updated;
       updateOverlayScores(updated.players);
@@ -3964,8 +3970,17 @@ async function pollLiveData() {
       // Emit toasts for each changed player
       updated.players.forEach(p => {
         const prev = prevPlayers.find(pp => pp.id === p.id);
-        if (prev && p.score !== prev.score) {
-          State.prevScores[p.id] = prev.score;
+        if (!prev) return;
+
+        const delta = scoreOf(p) - scoreOf(prev);
+        if (delta === 0) return;
+
+        State.prevScores[p.id] = scoreOf(prev);
+
+        if (State.overlayVisible && trackedIds.has(p.id)) {
+          const type = delta > 0 ? 'positive' : 'negative';
+          const icon = delta > 0 ? '⚡' : '💀';
+          showToast(icon, formatPlayerName(p.name), '', delta, type);
         }
       });
     }
