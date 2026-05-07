@@ -1212,7 +1212,6 @@
       cursor: grab;
       user-select: none;
       box-sizing: border-box;
-      --overlay-alpha: 0.9;
     }
     #overlay.active { display: block; }
     #overlay.dragging { cursor: grabbing; }
@@ -1233,7 +1232,7 @@
       align-items: center;
       justify-content: space-between;
       padding: 8px 12px;
-      background: rgba(13,17,23, calc(0.95 * var(--overlay-alpha)));
+      background: rgba(13,17,23, 0.95);
       border: 1px solid var(--border);
       border-radius: var(--radius) var(--radius) 0 0;
       backdrop-filter: blur(12px);
@@ -1265,45 +1264,6 @@
     }
     .overlay-btn:hover { background: var(--bg-card); color: var(--text-primary); }
 
-    /* Opacity slider that shows on hover */
-    .overlay-opacity-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 0 12px;
-      background: rgba(13,17,23, calc(0.9 * var(--overlay-alpha)));
-      border-left: 0;
-      border-right: 0;
-      max-height: 0;
-      overflow: hidden;
-      opacity: 0;
-      pointer-events: none;
-      transition: var(--transition);
-    }
-    #overlay:hover .overlay-opacity-row {
-      max-height: 40px;
-      padding: 6px 12px;
-      border-left: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-      opacity: 1;
-      pointer-events: auto;
-    }
-    #overlay.popout .overlay-opacity-row {
-      max-height: 40px;
-      padding: 6px 12px;
-      border-left: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .overlay-opacity-row label {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      white-space: nowrap;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-    }
-
     .overlay-tables {
       display: flex;
       flex-direction: column;
@@ -1334,7 +1294,7 @@
     #overlay .overlay-tables::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
 
     .overlay-team-table {
-      background: rgba(13,17,23, calc(0.92 * var(--overlay-alpha)));
+      background: rgba(13,17,23, 0.92);
     }
     .overlay-team-table + .overlay-team-table {
       border-top: 1px solid var(--border);
@@ -1797,18 +1757,6 @@
 
         <div class="toggle-row">
           <div>
-            <div class="toggle-label">Overlay Opacity</div>
-            <div class="toggle-desc">Adjust how transparent the overlay appears</div>
-          </div>
-          <div style="display:flex; align-items:center; gap:8px; min-width:160px;">
-            <input type="range" id="setting-opacity" min="10" max="100" value="90"
-                   aria-label="Overlay opacity" style="width:120px" />
-            <span id="opacity-value" style="font-size:0.8rem; color:var(--text-muted); min-width:36px">90%</span>
-          </div>
-        </div>
-
-        <div class="toggle-row">
-          <div>
             <div class="toggle-label">Overlay Position</div>
           </div>
           <select id="setting-position" aria-label="Overlay position">
@@ -1910,13 +1858,6 @@
       <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
       <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
     </div>
-  </div>
-
-  <!-- Opacity control (shows on hover) -->
-  <div class="overlay-opacity-row" aria-hidden="true">
-    <label>Opacity</label>
-    <input type="range" id="overlay-opacity-slider" min="10" max="100" value="90"
-           style="flex:1; width:auto;" aria-label="Overlay opacity" />
   </div>
 
   <!-- Score tables (injected by JS) -->
@@ -2459,7 +2400,6 @@ function nameToInitials(name) {
 function defaultSettings() {
   return {
     scoringSystem:  'afl_fantasy',
-    overlayOpacity: 90,
     overlayPosition:'top-right',
     toastsEnabled:  true,
     soundEnabled:   false,
@@ -2535,15 +2475,6 @@ function applyProfileSettings(user) {
   document.querySelectorAll('[name="scoring-system"]').forEach(radio => {
     radio.checked = (radio.value === (s.scoringSystem || 'afl_fantasy'));
   });
-
-  // ── Overlay opacity ───────────────────────────────────────────────────────
-  const opacity = s.overlayOpacity ?? 90;
-  const opacitySlider = document.getElementById('setting-opacity');
-  if (opacitySlider) opacitySlider.value = opacity;
-  const overlaySlider = document.getElementById('overlay-opacity-slider');
-  if (overlaySlider) overlaySlider.value = opacity;
-  setOverlayOpacity(opacity);
-  updateOpacityDisplay(opacity);
 
   // ── Overlay position dropdown ─────────────────────────────────────────────
   const posEl = document.getElementById('setting-position');
@@ -3631,7 +3562,7 @@ async function openOverlayPopout() {
       const pipWin = await window.documentPictureInPicture.requestWindow({ width: desiredWidth, height: desiredHeight });
       copyStylesToDocument(pipWin.document);
       pipWin.document.documentElement.style.background = 'transparent';
-      pipWin.document.documentElement.style.colorScheme = 'transparent';
+      pipWin.document.documentElement.style.colorScheme = 'dark';
       pipWin.document.body.style.margin = '0';
       pipWin.document.body.style.padding = '0';
       pipWin.document.body.style.background = 'transparent';
@@ -3668,7 +3599,7 @@ async function openOverlayPopout() {
   popup.document.close();
   copyStylesToDocument(popup.document);
   popup.document.documentElement.style.background = 'transparent';
-  popup.document.documentElement.style.colorScheme = 'transparent';
+  popup.document.documentElement.style.colorScheme = 'dark';
   popup.document.body.style.margin = '0';
   popup.document.body.style.padding = '0';
   popup.document.body.style.background = 'transparent';
@@ -3710,17 +3641,6 @@ function closeOverlayPopout(fromWindowEvent = false) {
   State.overlayPopoutMode = null;
   updateOverlayPopoutButton();
 }
-
-// Opacity sync (overlay slider → setting slider and vice versa)
-document.getElementById('overlay-opacity-slider').addEventListener('input', e => {
-  setOverlayOpacity(e.target.value);
-  document.getElementById('setting-opacity').value = e.target.value;
-  updateOpacityDisplay(e.target.value);
-  if (State.activeProfile) {
-    State.activeProfile.settings.overlayOpacity = parseInt(e.target.value);
-    saveCurrentProfile();
-  }
-});
 
 /* ---- DRAGGABLE OVERLAY ---- */
 (function initDrag() {
@@ -3935,21 +3855,15 @@ function updateOverlayScores(players) {
 }
 
 /* ================================================================
-   OVERLAY POSITIONING & OPACITY
-   ================================================================ */
-function setOverlayOpacity(pct) {
-  const overlay = getOverlayElement();
-  if (!overlay) return;
-  const alpha = Math.max(0.1, Math.min(1, Number(pct) / 100));
-  // Keep element opacity for full-overlay fade and also tune panel backgrounds.
-  overlay.style.opacity = String(alpha);
-  overlay.style.setProperty('--overlay-alpha', String(alpha));
-}
-
+  OVERLAY POSITIONING
+  ================================================================ */
 function applyOverlayPosition(position) {
   const el = getOverlayElement();
   if (!el) return;
-  el.style.cssText = `opacity:${el.style.opacity};`;
+  el.style.top = 'auto';
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+  el.style.left = 'auto';
   switch(position) {
     case 'top-right':    el.style.top='80px'; el.style.right='20px'; el.style.left='auto'; el.style.bottom='auto'; break;
     case 'top-left':     el.style.top='80px'; el.style.left='20px'; el.style.right='auto'; el.style.bottom='auto'; break;
@@ -3958,10 +3872,6 @@ function applyOverlayPosition(position) {
   }
 }
 
-function updateOpacityDisplay(val) {
-  const el = document.getElementById('opacity-value');
-  if (el) el.textContent = `${val}%`;
-}
 function updateVolumeDisplay(val) {
   const el = document.getElementById('volume-value');
   if (el) el.textContent = `${val}%`;
@@ -4180,16 +4090,6 @@ function stopPolling() {
 /* ================================================================
    SETTINGS WIRING
    ================================================================ */
-document.getElementById('setting-opacity').addEventListener('input', e => {
-  setOverlayOpacity(e.target.value);
-  updateOpacityDisplay(e.target.value);
-  document.getElementById('overlay-opacity-slider').value = e.target.value;
-  if (State.activeProfile) {
-    State.activeProfile.settings.overlayOpacity = parseInt(e.target.value);
-    saveCurrentProfile();
-  }
-});
-
 document.getElementById('setting-position').addEventListener('change', e => {
   applyOverlayPosition(e.target.value);
   if (State.activeProfile) {
