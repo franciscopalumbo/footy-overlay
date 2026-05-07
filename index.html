@@ -3631,7 +3631,7 @@ async function openOverlayPopout() {
       const pipWin = await window.documentPictureInPicture.requestWindow({ width: desiredWidth, height: desiredHeight });
       copyStylesToDocument(pipWin.document);
       pipWin.document.documentElement.style.background = 'transparent';
-      pipWin.document.documentElement.style.colorScheme = 'dark';
+      pipWin.document.documentElement.style.colorScheme = 'transparent';
       pipWin.document.body.style.margin = '0';
       pipWin.document.body.style.padding = '0';
       pipWin.document.body.style.background = 'transparent';
@@ -3668,7 +3668,7 @@ async function openOverlayPopout() {
   popup.document.close();
   copyStylesToDocument(popup.document);
   popup.document.documentElement.style.background = 'transparent';
-  popup.document.documentElement.style.colorScheme = 'dark';
+  popup.document.documentElement.style.colorScheme = 'transparent';
   popup.document.body.style.margin = '0';
   popup.document.body.style.padding = '0';
   popup.document.body.style.background = 'transparent';
