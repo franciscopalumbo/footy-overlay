@@ -226,23 +226,28 @@ exports.handler = async function (event) {
   }
 
   try {
-    const [roundScoresHtml, fixtureHtml, homepageHtml] = await Promise.all([
-      fetchPage(`${BASE_URL}/game/roundscores.php`),
+    const [fixtureHtml, homepageHtml, roundScoresLandingHtml] = await Promise.all([
       fetchPage(`${BASE_URL}/game/fixture.php`),
       fetchPage(`${BASE_URL}/`),
+      fetchPage(`${BASE_URL}/game/roundscores.php`),
     ]);
 
-    const $scores  = cheerio.load(roundScoresHtml);
     const $fixture = cheerio.load(fixtureHtml);
     const $home    = cheerio.load(homepageHtml);
+    const $landing = cheerio.load(roundScoresLandingHtml);
 
-    const round         = parseRoundNumber($scores);
+    const round = parseRoundNumber($landing);
+    const roundParam = Number.isInteger(round) && round > 0 ? `?round=${round}` : '';
+    const roundScoresHtml = await fetchPage(`${BASE_URL}/game/roundscores.php${roundParam}`);
+    const $scores = cheerio.load(roundScoresHtml);
+
     const homepageGames = parseHomepageGames($home);
     const fixtureGames  = parseFixtureRound($fixture, round);
     const playersByPair = parseRoundScores($scores);
     const teamsheetsByTeam = await fetchTeamSheetsByTeam(round);
+    const liveByPair = await fetchLiveGamesByPair(fixtureGames, homepageGames);
 
-    const games = mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam);
+    const games = mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam, liveByPair);
     const { liveGames, upcomingGames, pastGames } = classifyGames(games, new Date());
 
     const payload = { round, liveGames, upcomingGames, pastGames };
@@ -285,6 +290,134 @@ async function fetchTeamSheetsByTeam(round) {
     console.warn('[fanfooty-proxy] teamsheets parse failed:', err.message);
     return new Map();
   }
+}
+
+async function fetchLiveGamesByPair(fixtureGames, homepageGames) {
+  const out = new Map();
+  const jobs = [];
+
+  for (const fx of fixtureGames) {
+    const key = pairKey(fx.teamAKey, fx.teamBKey);
+    const home = homepageGames.get(key);
+    if (!home || !home.fanfootyId) continue;
+
+    const url = `${BASE_URL}/live/${home.fanfootyId}.txt`;
+    jobs.push(
+      fetchPage(url)
+        .then(txt => {
+          const parsed = parseLiveTextFeed(txt);
+          if (!parsed) return;
+          out.set(key, parsed);
+        })
+        .catch(() => {
+          // Ignore missing/inactive live text files for not-yet-started games.
+        }),
+    );
+  }
+
+  await Promise.all(jobs);
+  return out;
+}
+
+function parseLiveTextFeed(text) {
+  const raw = String(text || '').trim();
+  if (!raw || /^<!DOCTYPE/i.test(raw)) return null;
+
+  const firstLine = raw.split(/\r?\n/, 1)[0] || '';
+  const top = firstLine.split(',').map(s => decodeHtmlEntities(s).trim());
+  if (top.length < 8) return null;
+
+  const teamAName = top[0] || '';
+  const teamBName = top[2] || '';
+  const teamAScore = parseGbsScore(top[5]);
+  const teamBScore = parseGbsScore(top[6]);
+  const status = parseLiveMatchStatus(top.slice(7).join(',').trim());
+
+  const rows = [];
+  const playerRe = /(\d{5,8}),([^,\n]+),([^,\n]+),([A-Z]{2,3}),[^,\n]*,(-?\d+),(-?\d+)/g;
+  let m;
+  while ((m = playerRe.exec(raw)) !== null) {
+    rows.push({
+      first: decodeHtmlEntities(m[2]).trim(),
+      last: decodeHtmlEntities(m[3]).trim(),
+      code: (m[4] || '').trim(),
+      dt: parseInt(m[5], 10) || 0,
+      sc: parseInt(m[6], 10) || 0,
+    });
+  }
+
+  const codeA = rows.length ? rows[0].code : null;
+  const codeB = rows.find(r => r.code !== codeA)?.code || null;
+
+  const toPlayer = (r) => {
+    const name = [r.first, r.last].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+    return {
+      id: slugify(name),
+      name,
+      jersey: null,
+      pos: null,
+      score: r.dt,
+      scoreDT: r.dt,
+      scoreSC: r.sc,
+    };
+  };
+
+  let teamAPlayers = [];
+  let teamBPlayers = [];
+  if (codeA && codeB) {
+    teamAPlayers = rows.filter(r => r.code === codeA).map(toPlayer);
+    teamBPlayers = rows.filter(r => r.code === codeB).map(toPlayer);
+  } else {
+    const half = Math.ceil(rows.length / 2);
+    teamAPlayers = rows.slice(0, half).map(toPlayer);
+    teamBPlayers = rows.slice(half).map(toPlayer);
+  }
+
+  return {
+    teamAName,
+    teamBName,
+    teamA: teamAScore,
+    teamB: teamBScore,
+    status,
+    teamAPlayers,
+    teamBPlayers,
+  };
+}
+
+function parseGbsScore(input) {
+  const txt = String(input || '').trim();
+  const m = txt.match(/(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return { goals: 0, behinds: 0, score: 0 };
+  return {
+    goals: parseInt(m[1], 10),
+    behinds: parseInt(m[2], 10),
+    score: parseInt(m[3], 10),
+  };
+}
+
+function parseLiveMatchStatus(input) {
+  const status = decodeHtmlEntities(String(input || '').replace(/\s+/g, ' ').trim());
+  const upper = status.toUpperCase();
+  const qClock = upper.match(/Q([1-4])\s*(\d{1,2}:\d{2})/);
+  if (qClock) {
+    return { state: 'live', quarter: parseInt(qClock[1], 10), timeRemaining: qClock[2], raw: status };
+  }
+  if (/HALF\s*TIME|\bHT\b/.test(upper)) {
+    return { state: 'live', quarter: 2, timeRemaining: 'HT', raw: status };
+  }
+  if (/THREE\s*QUARTER\s*TIME|\b3QT\b/.test(upper)) {
+    return { state: 'live', quarter: 3, timeRemaining: '3QT', raw: status };
+  }
+  if (/QUARTER\s*TIME|\bQT\b/.test(upper)) {
+    return { state: 'live', quarter: 1, timeRemaining: 'QT', raw: status };
+  }
+  if (/FULL\s*TIME|\bFT\b/.test(upper)) {
+    return { state: 'final', quarter: 4, timeRemaining: '0:00', raw: status };
+  }
+  if (/PRE-?MATCH/.test(upper)) {
+    return { state: 'upcoming', quarter: null, timeRemaining: null, raw: status };
+  }
+  return { state: null, quarter: null, timeRemaining: null, raw: status };
 }
 
 function jsonHeaders() {
@@ -750,11 +883,12 @@ function parseFixtureRound($, targetRound) {
 
 // ─── MERGE ────────────────────────────────────────────────────────────────────
 
-function mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam = new Map()) {
+function mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam = new Map(), liveByPair = new Map()) {
   return fixtureGames.map((fx, i) => {
     const key = pairKey(fx.teamAKey, fx.teamBKey);
     const score = playersByPair.get(key);
     const home  = homepageGames.get(key);
+    const live  = liveByPair.get(key);
 
     let teamAScore = 0, teamAGoals = 0, teamABehinds = 0, teamAPlayers = [];
     let teamBScore = 0, teamBGoals = 0, teamBBehinds = 0, teamBPlayers = [];
@@ -777,6 +911,43 @@ function mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam
       }
     }
 
+    // Live text feed is the source of truth during active games.
+    let quarter = null;
+    let timeRemaining = null;
+    let statusHint = null;
+    if (live) {
+      if (live.teamAName && live.teamBName) {
+        const isSameOrder =
+          findTeamByAnyName(live.teamAName)?.key === fx.teamAKey &&
+          findTeamByAnyName(live.teamBName)?.key === fx.teamBKey;
+        if (isSameOrder) {
+          teamAScore = live.teamA.score;
+          teamAGoals = live.teamA.goals;
+          teamABehinds = live.teamA.behinds;
+          teamBScore = live.teamB.score;
+          teamBGoals = live.teamB.goals;
+          teamBBehinds = live.teamB.behinds;
+          if (live.teamAPlayers.length) teamAPlayers = live.teamAPlayers;
+          if (live.teamBPlayers.length) teamBPlayers = live.teamBPlayers;
+        } else {
+          teamAScore = live.teamB.score;
+          teamAGoals = live.teamB.goals;
+          teamABehinds = live.teamB.behinds;
+          teamBScore = live.teamA.score;
+          teamBGoals = live.teamA.goals;
+          teamBBehinds = live.teamA.behinds;
+          if (live.teamBPlayers.length) teamAPlayers = live.teamBPlayers;
+          if (live.teamAPlayers.length) teamBPlayers = live.teamAPlayers;
+        }
+      }
+
+      if (live.status) {
+        quarter = live.status.quarter;
+        timeRemaining = live.status.timeRemaining;
+        statusHint = live.status.state;
+      }
+    }
+
     // Fallback to named team sheets when roundscores has no player rows yet.
     if (!teamAPlayers.length) teamAPlayers = teamsheetsByTeam.get(fx.teamAKey) || [];
     if (!teamBPlayers.length) teamBPlayers = teamsheetsByTeam.get(fx.teamBKey) || [];
@@ -796,15 +967,18 @@ function mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam
         name: fx.teamBName, abbr: fx.teamBAbbr, color: fx.teamBColor,
         score: teamBScore, goals: teamBGoals, behinds: teamBBehinds,
       },
-      quarter:       null,
-      timeRemaining: null,
+      quarter,
+      timeRemaining,
       venue:         fx.venue,
       date:          fx.date,
       time:          fx.time ? `${fx.time} AET` : null,
       status:        null,
+      _statusHint:   statusHint,
       _kickoffMs:    fx.kickoffMs,
-      _hasScores:    !!score || !!(home && home.scoreA !== null),
+      _hasScores:    !!score || !!(home && home.scoreA !== null) || !!live,
       players:       [...teamAPlayers, ...teamBPlayers],
+      teamAPlayers,
+      teamBPlayers,
     };
   });
 }
@@ -819,9 +993,16 @@ function classifyGames(games, now) {
 
   for (const game of games) {
     const k = game._kickoffMs;
+    const hint = game._statusHint;
     let bucket;
 
-    if (k === null || k === undefined) {
+    if (hint === 'live') {
+      bucket = 'live';
+    } else if (hint === 'final') {
+      bucket = 'past';
+    } else if (hint === 'upcoming') {
+      bucket = 'upcoming';
+    } else if (k === null || k === undefined) {
       bucket = game._hasScores ? 'past' : 'upcoming';
     } else if (k > nowMs) {
       bucket = 'upcoming';
@@ -833,6 +1014,7 @@ function classifyGames(games, now) {
 
     delete game._kickoffMs;
     delete game._hasScores;
+    delete game._statusHint;
 
     if (bucket === 'live') {
       game.status = 'live';
@@ -842,8 +1024,8 @@ function classifyGames(games, now) {
       upcomingGames.push(game);
     } else {
       game.status = 'final';
-      game.quarter = 4;
-      game.timeRemaining = '0:00';
+      if (!game.quarter) game.quarter = 4;
+      if (!game.timeRemaining) game.timeRemaining = '0:00';
       pastGames.push(game);
     }
   }

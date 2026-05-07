@@ -2306,6 +2306,7 @@ const State = {
   get activeProfile() { return this.activeUser; },
   set activeProfile(v)  { this.activeUser = v; },
   currentGame: null,       // Game object from MOCK_DATA or live fetch
+  round: 0,
   liveGames: [],
   upcomingGames: [],
   pastGames: [],
@@ -2749,9 +2750,11 @@ function renderGameCard(game) {
   const leaderA = showScores && game.teamA.score >= game.teamB.score ? 'leader' : '';
   const leaderB = showScores && game.teamB.score > game.teamA.score  ? 'leader' : '';
 
+  const qLabel = game.quarter ? `Q${game.quarter}` : '';
+  const tLabel = game.timeRemaining || '';
+  const qtDisplay = [qLabel, tLabel].filter(Boolean).join(' · ');
   const statusHtml = isLive
-    ? `<span class="live-badge">LIVE</span>
-       <span class="game-quarter">Q${game.quarter} · ${game.timeRemaining}</span>`
+    ? `<span class="live-badge">LIVE</span>${qtDisplay ? `<span class="game-quarter">${qtDisplay}</span>` : ''}`
     : isFinal
       ? `<span class="final-badge">FINAL</span>`
       : `<span class="upcoming-badge">${game.date}</span>`;
@@ -2803,7 +2806,7 @@ function renderWatchTab(liveGames, upcomingGames, pastGames = []) {
 
   // Upcoming games
   upcomingGrid.innerHTML = '';
-  const round = (State.isMockMode ? MOCK_DATA : { round: '?' }).round;
+  const round = State.isMockMode ? MOCK_DATA.round : (State.round || '?');
   document.getElementById('upcoming-round-label').textContent = `Round ${round}`;
 
   if (upcomingGames.length === 0) {
@@ -3942,6 +3945,7 @@ async function pollLiveData() {
   State.liveGames     = data.liveGames;
   State.upcomingGames = data.upcomingGames;
   State.pastGames     = data.pastGames || [];
+  if (data.round) State.round = data.round;
 
   // Re-render watch tab if it's active
   if (State.activeView === 'watch') {
