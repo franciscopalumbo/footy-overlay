@@ -240,8 +240,9 @@ exports.handler = async function (event) {
     const homepageGames = parseHomepageGames($home);
     const fixtureGames  = parseFixtureRound($fixture, round);
     const playersByPair = parseRoundScores($scores);
+    const teamsheetsByTeam = await fetchTeamSheetsByTeam(round);
 
-    const games = mergeGames(fixtureGames, playersByPair, homepageGames);
+    const games = mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam);
     const { liveGames, upcomingGames, pastGames } = classifyGames(games, new Date());
 
     const payload = { round, liveGames, upcomingGames, pastGames };
@@ -271,6 +272,18 @@ async function fetchPage(url) {
     return await res.text();
   } finally {
     clearTimeout(timer);
+  }
+}
+
+async function fetchTeamSheetsByTeam(round) {
+  try {
+    const roundParam = Number.isInteger(round) && round > 0 ? `?round=${round}` : '';
+    const html = await fetchPage(`${BASE_URL}/game/teamsheets.php${roundParam}`);
+    const $ = cheerio.load(html);
+    return parseTeamSheets($, round);
+  } catch (err) {
+    console.warn('[fanfooty-proxy] teamsheets parse failed:', err.message);
+    return new Map();
   }
 }
 
@@ -374,12 +387,42 @@ function parseHomepageGames($) {
 function parseRoundScores($) {
   const result = new Map();
 
-  const outerTables = $('table').filter((_, t) => $(t).parents('table').length === 0);
+  // Primary path: legacy layout where each game table is top-level.
+  // Fallback path: CMS wrappers may nest game tables deeper.
+  let outerTables = $('table').filter((_, t) => $(t).parents('table').length === 0);
+  if (outerTables.length === 0) {
+    outerTables = $('table').filter((_, t) => {
+      const $t = $(t);
+      const directRows = $t.children('tbody').children('tr').length
+        ? $t.children('tbody').children('tr')
+        : $t.children('tr');
+      const teamishRow = directRows.filter((__, tr) => {
+        const tdWithNestedTables = $(tr).children('td').filter((___, td) => $(td).find('table').length > 0).length;
+        return tdWithNestedTables >= 2;
+      }).first();
+      if (teamishRow.length) return true;
+      return $t.find('caption').length >= 2;
+    });
+  }
 
   outerTables.each((tIdx, table) => {
     try {
       const $table = $(table);
-      let teamCells = $table.children('tbody').children('tr').children('td');
+
+      let teamCells = $();
+      const directRows = $table.children('tbody').children('tr').length
+        ? $table.children('tbody').children('tr')
+        : $table.children('tr');
+      const rowWithTwoTeamBlocks = directRows.filter((_, tr) => {
+        const tdWithNestedTables = $(tr).children('td').filter((__, td) => $(td).find('table').length > 0).length;
+        return tdWithNestedTables >= 2;
+      }).first();
+      if (rowWithTwoTeamBlocks.length) {
+        teamCells = rowWithTwoTeamBlocks.children('td');
+      }
+      if (teamCells.length === 0) {
+        teamCells = $table.children('tbody').children('tr').children('td');
+      }
       if (teamCells.length === 0) {
         teamCells = $table.children('tr').children('td');
       }
@@ -440,17 +483,42 @@ function parseRoundScores($) {
  * we deliberately ignore.
  */
 function extractTeamBlock($, $cell) {
-  const innerTable = $cell.find('table').first();
-  if (innerTable.length === 0) return null;
+  let innerTable = null;
+  let headerInfo = null;
 
-  let headerText = innerTable.children('caption').text().trim();
-  if (!headerText) {
-    const $clone = $cell.clone();
-    $clone.find('table').remove();
-    headerText = $clone.text().trim();
-  }
-  const headerInfo = parseTeamHeader(headerText);
-  if (!headerInfo) return null;
+  // Prefer a nested table whose caption (or wrapper text) is parseable as a team header.
+  $cell.find('table').each((_, tbl) => {
+    const $tbl = $(tbl);
+
+    let headerText = $tbl.children('caption').text().trim();
+    if (!headerText) {
+      const $cellClone = $cell.clone();
+      $cellClone.find('table').remove();
+      headerText = $cellClone.text().trim();
+    }
+
+    const parsed = parseTeamHeader(headerText);
+    if (parsed) {
+      innerTable = $tbl;
+      headerInfo = parsed;
+      return false;
+    }
+  });
+
+  if (!innerTable || !headerInfo) return null;
+
+  // Determine score column indexes from the nearest header row.
+  let dtCol = 1;
+  let scCol = 2;
+  innerTable.find('tr').each((_, tr) => {
+    const labels = $(tr).find('th').map((__, th) => $(th).text().trim().toLowerCase()).get();
+    if (!labels.length) return;
+    const dtIdx = labels.findIndex(l => l === 'dt' || l.includes('dream'));
+    const scIdx = labels.findIndex(l => l === 'sc' || l.includes('supercoach'));
+    if (dtIdx !== -1) dtCol = dtIdx;
+    if (scIdx !== -1) scCol = scIdx;
+    if (dtIdx !== -1 || scIdx !== -1) return false;
+  });
 
   const players = [];
   innerTable.find('tr').each((_, tr) => {
@@ -459,19 +527,27 @@ function extractTeamBlock($, $cell) {
       if (!cells.length) return;
 
       const link = cells.first().find('a[href*="/player/"]');
-      if (!link.length) return;
+      const firstCellText = cells.first().text().replace(/\s+/g, ' ').trim();
+      if (!link.length && !firstCellText) return;
 
-      const name = link.text().trim();
+      const name = (link.length ? link.text() : firstCellText).replace(/\s+/g, ' ').trim();
       const href = link.attr('href') || '';
-      const slug = href.replace(/^.*\/player\//, '').replace(/\/$/, '');
+      const slug = href
+        .replace(/^.*\/player\//, '')
+        .replace(/\/$/, '')
+        .replace(/\.(html?|php)$/i, '');
       if (!name) return;
 
-      const dt = parseInt(cells.eq(1).text().trim(), 10);
-      const sc = parseInt(cells.eq(2).text().trim(), 10);
+      // Skip label-ish rows that slipped through (e.g. Player/DT/SC headings in <td> form).
+      const labelKey = name.toLowerCase();
+      if (labelKey === 'player' || labelKey === 'name' || labelKey.includes('dream team')) return;
+
+      const dt = parseInt((cells.eq(dtCol).text().match(/-?\d+/) || [])[0], 10);
+      const sc = parseInt((cells.eq(scCol).text().match(/-?\d+/) || [])[0], 10);
       if (Number.isNaN(dt) || Number.isNaN(sc)) return;
 
       players.push({
-        id:      slug || `player_${players.length}`,
+        id:      slug || slugify(name) || `player_${players.length}`,
         name,
         jersey:  null,
         pos:     null,
@@ -507,6 +583,64 @@ function parseTeamHeader(text) {
   const score   = m[4] !== undefined ? parseInt(m[4], 10) : (goals * 6 + behinds);
 
   return { teamKey: canonical.key, canonical, goals, behinds, score };
+}
+
+// ─── TEAM SHEETS PARSER (fallback for named players before/without scores) ───
+
+function parseTeamSheets($, targetRound) {
+  const byTeam = new Map();
+  const html = $.html();
+
+  // Prefer the requested round section when present.
+  let section = html;
+  if (Number.isInteger(targetRound) && targetRound > 0) {
+    const marker = new RegExp(`<b>\\s*R\\s*${targetRound}\\s*<\\/b>`, 'i');
+    const start = html.search(marker);
+    if (start >= 0) {
+      section = html.slice(start);
+    }
+  }
+
+  const teamBlockRe = /<b>\s*([A-Za-z .'-]+?)\s*<\/b>\s*<br\s*\/?>([\s\S]*?)(?=<br\s*\/?>\s*<b>\s*[A-Za-z .'-]+?\s*<\/b>\s*<br\s*\/?>|$)/gi;
+  let m;
+  while ((m = teamBlockRe.exec(section)) !== null) {
+    const rawTeam = (m[1] || '').replace(/&nbsp;/gi, ' ').trim();
+    const team = findTeamByAnyName(rawTeam);
+    if (!team) continue;
+
+    // Ignore emergency names for "players playing" output.
+    const blockHtml = m[2] || '';
+    const playableHtml = blockHtml.split(/<b>\s*EMG\s*:?\s*<\/b>/i)[0];
+
+    const players = [];
+    const seen = new Set();
+    const linkRe = /<a[^>]+href=["'][^"']*\/player\/([^"'\/?#>]+)[^"'>]*["'][^>]*>([^<]+)<\/a>/gi;
+    let lm;
+    while ((lm = linkRe.exec(playableHtml)) !== null) {
+      const slug = (lm[1] || '').replace(/\.(html?|php)$/i, '').trim();
+      const name = decodeHtmlEntities((lm[2] || '').replace(/\s+/g, ' ').trim());
+      if (!name) continue;
+      const id = slug || slugify(name);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+
+      players.push({
+        id,
+        name,
+        jersey: null,
+        pos: null,
+        score: 0,
+        scoreDT: 0,
+        scoreSC: 0,
+      });
+    }
+
+    if (players.length > 0) {
+      byTeam.set(team.key, players);
+    }
+  }
+
+  return byTeam;
 }
 
 // ─── FIXTURE PARSER ───────────────────────────────────────────────────────────
@@ -616,7 +750,7 @@ function parseFixtureRound($, targetRound) {
 
 // ─── MERGE ────────────────────────────────────────────────────────────────────
 
-function mergeGames(fixtureGames, playersByPair, homepageGames) {
+function mergeGames(fixtureGames, playersByPair, homepageGames, teamsheetsByTeam = new Map()) {
   return fixtureGames.map((fx, i) => {
     const key = pairKey(fx.teamAKey, fx.teamBKey);
     const score = playersByPair.get(key);
@@ -642,6 +776,10 @@ function mergeGames(fixtureGames, playersByPair, homepageGames) {
         teamBScore = home.scoreA;
       }
     }
+
+    // Fallback to named team sheets when roundscores has no player rows yet.
+    if (!teamAPlayers.length) teamAPlayers = teamsheetsByTeam.get(fx.teamAKey) || [];
+    if (!teamBPlayers.length) teamBPlayers = teamsheetsByTeam.get(fx.teamBKey) || [];
 
     const fanfootyId = home ? home.fanfootyId : null;
     const id = fanfootyId ? `ff_${fanfootyId}` : `fx_${i}`;
@@ -824,4 +962,25 @@ function findTeamByAnyName(input) {
 
 function pairKey(a, b) {
   return [a, b].sort().join('__');
+}
+
+function slugify(input) {
+  return String(input || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function decodeHtmlEntities(input) {
+  return String(input || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .trim();
 }
