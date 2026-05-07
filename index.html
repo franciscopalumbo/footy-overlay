@@ -1211,16 +1211,29 @@
       width: 300px;
       cursor: grab;
       user-select: none;
+      box-sizing: border-box;
+      --overlay-alpha: 0.9;
     }
     #overlay.active { display: block; }
     #overlay.dragging { cursor: grabbing; }
+    #overlay.popout {
+      position: static;
+      top: auto;
+      right: auto;
+      left: auto;
+      bottom: auto;
+      width: 100%;
+      max-width: none;
+      height: auto;
+      cursor: default;
+    }
 
     .overlay-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 8px 12px;
-      background: rgba(13,17,23,0.95);
+      background: rgba(13,17,23, calc(0.95 * var(--overlay-alpha)));
       border: 1px solid var(--border);
       border-radius: var(--radius) var(--radius) 0 0;
       backdrop-filter: blur(12px);
@@ -1258,7 +1271,7 @@
       align-items: center;
       gap: 8px;
       padding: 6px 12px;
-      background: rgba(13,17,23,0.9);
+      background: rgba(13,17,23, calc(0.9 * var(--overlay-alpha)));
       border-left: 1px solid var(--border);
       border-right: 1px solid var(--border);
       opacity: 0;
@@ -1287,6 +1300,9 @@
       -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
       mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
     }
+    #overlay.popout .overlay-tables {
+      max-height: calc(100vh - 84px);
+    }
     /* When not scrollable, remove the fade */
     .overlay-tables:not([data-scrollable="true"]) {
       -webkit-mask-image: none;
@@ -1300,7 +1316,7 @@
     #overlay .overlay-tables::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
 
     .overlay-team-table {
-      background: rgba(13,17,23,0.92);
+      background: rgba(13,17,23, calc(0.92 * var(--overlay-alpha)));
     }
     .overlay-team-table + .overlay-team-table {
       border-top: 1px solid var(--border);
@@ -3565,7 +3581,8 @@ document.getElementById('overlay-popout-btn').addEventListener('click', async ()
 
 document.getElementById('overlay-minimise-btn').addEventListener('click', () => {
   State.overlayMinimised = !State.overlayMinimised;
-  const overlay = document.getElementById('overlay');
+  const overlay = getOverlayElement();
+  if (!overlay) return;
   overlay.classList.toggle('minimised', State.overlayMinimised);
   document.getElementById('overlay-minimise-btn').textContent = State.overlayMinimised ? '+' : '−';
 });
@@ -3592,16 +3609,18 @@ async function openOverlayPopout() {
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
       const pipWin = await window.documentPictureInPicture.requestWindow({ width: 420, height: 740 });
       copyStylesToDocument(pipWin.document);
+      pipWin.document.documentElement.style.background = 'transparent';
       pipWin.document.body.style.margin = '0';
       pipWin.document.body.style.background = 'transparent';
       pipWin.document.body.appendChild(overlay);
+      overlay.classList.add('popout');
       overlay.style.left = '0';
       overlay.style.top = '0';
       overlay.style.right = 'auto';
       overlay.style.bottom = 'auto';
       overlay.style.width = '100%';
       overlay.style.maxWidth = 'none';
-      overlay.style.height = '100%';
+      overlay.style.height = 'auto';
 
       State.overlayPopoutWindow = pipWin;
       State.overlayPopoutMode = 'pip';
@@ -3623,16 +3642,18 @@ async function openOverlayPopout() {
   popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>FootyOverlay</title></head><body></body></html>');
   popup.document.close();
   copyStylesToDocument(popup.document);
+  popup.document.documentElement.style.background = 'transparent';
   popup.document.body.style.margin = '0';
   popup.document.body.style.background = 'transparent';
   popup.document.body.appendChild(overlay);
+  overlay.classList.add('popout');
   overlay.style.left = '0';
   overlay.style.top = '0';
   overlay.style.right = 'auto';
   overlay.style.bottom = 'auto';
   overlay.style.width = '100%';
   overlay.style.maxWidth = 'none';
-  overlay.style.height = '100%';
+  overlay.style.height = 'auto';
 
   State.overlayPopoutWindow = popup;
   State.overlayPopoutMode = 'popup';
@@ -3646,6 +3667,7 @@ function closeOverlayPopout(fromWindowEvent = false) {
   if (!win || !overlay) return;
 
   document.body.appendChild(overlay);
+  overlay.classList.remove('popout');
   overlay.style.width = '';
   overlay.style.maxWidth = '';
   overlay.style.height = '';
@@ -3888,7 +3910,11 @@ function updateOverlayScores(players) {
    ================================================================ */
 function setOverlayOpacity(pct) {
   const overlay = getOverlayElement();
-  if (overlay) overlay.style.opacity = pct / 100;
+  if (!overlay) return;
+  const alpha = Math.max(0.1, Math.min(1, Number(pct) / 100));
+  // Keep element opacity for full-overlay fade and also tune panel backgrounds.
+  overlay.style.opacity = String(alpha);
+  overlay.style.setProperty('--overlay-alpha', String(alpha));
 }
 
 function applyOverlayPosition(position) {
