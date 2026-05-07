@@ -334,16 +334,35 @@ function parseLiveTextFeed(text) {
   const status = parseLiveMatchStatus(top.slice(7).join(',').trim());
 
   const rows = [];
-  const playerRe = /(\d{5,8}),([^,\n]+),([^,\n]+),([A-Z]{2,3}),(\d+),(-?\d+),(-?\d+)/g;
-  let m;
-  while ((m = playerRe.exec(raw)) !== null) {
+  const positionTokens = new Set(['Back', 'Midfielder', 'Forward', 'Ruck']);
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    if (!/^\d{5,8},[^,\n]+,[^,\n]+,[A-Z]{2,3},/.test(line)) continue;
+
+    const cols = line.split(',').map(s => decodeHtmlEntities(s).trim());
+    if (cols.length < 8) continue;
+
+    const dt = parseInt(cols[5], 10);
+    const sc = parseInt(cols[6], 10);
+    if (Number.isNaN(dt) || Number.isNaN(sc)) continue;
+
+    let jersey = null;
+    for (let i = 0; i < cols.length - 1; i += 1) {
+      if (!positionTokens.has(cols[i])) continue;
+      const n = parseInt(cols[i + 1], 10);
+      if (!Number.isNaN(n) && n > 0 && n <= 99) {
+        jersey = n;
+        break;
+      }
+    }
+
     rows.push({
-      first: decodeHtmlEntities(m[2]).trim(),
-      last: decodeHtmlEntities(m[3]).trim(),
-      code: (m[4] || '').trim(),
-      jersey: parseInt(m[5], 10) || null,
-      dt: parseInt(m[6], 10) || 0,
-      sc: parseInt(m[7], 10) || 0,
+      first: cols[1],
+      last: cols[2],
+      code: cols[3],
+      jersey,
+      dt,
+      sc,
     });
   }
 
