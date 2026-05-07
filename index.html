@@ -3656,7 +3656,7 @@ function renderOverlayTables() {
 
     const rows = players.map(p => `
       <tr>
-        <td style="color:var(--text-muted)">#${p.jersey}</td>
+        <td style="color:var(--text-muted)">#${p.jersey ?? '–'}</td>
         <td>${escHtml(formatPlayerName(p.name))}</td>
         <td id="score-cell-${team.id}-${p.id}" class="player-score-cell">
           ${playerScore(p)}

@@ -334,15 +334,16 @@ function parseLiveTextFeed(text) {
   const status = parseLiveMatchStatus(top.slice(7).join(',').trim());
 
   const rows = [];
-  const playerRe = /(\d{5,8}),([^,\n]+),([^,\n]+),([A-Z]{2,3}),[^,\n]*,(-?\d+),(-?\d+)/g;
+  const playerRe = /(\d{5,8}),([^,\n]+),([^,\n]+),([A-Z]{2,3}),(\d+),(-?\d+),(-?\d+)/g;
   let m;
   while ((m = playerRe.exec(raw)) !== null) {
     rows.push({
       first: decodeHtmlEntities(m[2]).trim(),
       last: decodeHtmlEntities(m[3]).trim(),
       code: (m[4] || '').trim(),
-      dt: parseInt(m[5], 10) || 0,
-      sc: parseInt(m[6], 10) || 0,
+      jersey: parseInt(m[5], 10) || null,
+      dt: parseInt(m[6], 10) || 0,
+      sc: parseInt(m[7], 10) || 0,
     });
   }
 
@@ -354,7 +355,7 @@ function parseLiveTextFeed(text) {
     return {
       id: slugify(name),
       name,
-      jersey: null,
+      jersey: r.jersey,
       pos: null,
       score: r.dt,
       scoreDT: r.dt,
