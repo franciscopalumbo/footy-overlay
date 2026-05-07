@@ -1270,14 +1270,24 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 6px 12px;
+      padding: 0 12px;
       background: rgba(13,17,23, calc(0.9 * var(--overlay-alpha)));
-      border-left: 1px solid var(--border);
-      border-right: 1px solid var(--border);
+      border-left: 0;
+      border-right: 0;
+      max-height: 0;
+      overflow: hidden;
       opacity: 0;
+      pointer-events: none;
       transition: var(--transition);
     }
-    #overlay:hover .overlay-opacity-row { opacity: 1; }
+    #overlay:hover .overlay-opacity-row {
+      max-height: 40px;
+      padding: 6px 12px;
+      border-left: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      opacity: 1;
+      pointer-events: auto;
+    }
     .overlay-opacity-row label {
       font-size: 0.65rem;
       color: var(--text-muted);
@@ -3604,14 +3614,17 @@ function updateOverlayPopoutButton() {
 async function openOverlayPopout() {
   const overlay = getOverlayElement();
   if (!overlay) return;
+  const rect = overlay.getBoundingClientRect();
+  const desiredWidth = Math.max(320, Math.min(460, Math.ceil(rect.width || 360)));
+  const desiredHeight = Math.max(320, Math.min(window.screen.availHeight - 80, Math.ceil(rect.height || 520)));
 
   try {
     if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
-      const pipWin = await window.documentPictureInPicture.requestWindow({ width: 420, height: 740 });
+      const pipWin = await window.documentPictureInPicture.requestWindow({ width: desiredWidth, height: desiredHeight });
       copyStylesToDocument(pipWin.document);
-      pipWin.document.documentElement.style.background = 'transparent';
+      pipWin.document.documentElement.style.background = '#0d1117';
       pipWin.document.body.style.margin = '0';
-      pipWin.document.body.style.background = 'transparent';
+      pipWin.document.body.style.background = '#0d1117';
       pipWin.document.body.appendChild(overlay);
       overlay.classList.add('popout');
       overlay.style.left = '0';
@@ -3632,7 +3645,7 @@ async function openOverlayPopout() {
     console.warn('[FootyOverlay] Document PiP unavailable:', err?.message || err);
   }
 
-  const popup = window.open('', 'footyoverlay_overlay', 'popup=yes,width=420,height=740');
+  const popup = window.open('', 'footyoverlay_overlay', `popup=yes,width=${desiredWidth},height=${desiredHeight}`);
   if (!popup) {
     showToast('⚠️', 'Popup blocked', 'Allow popups to use cross-app overlay window', 0, 'neutral');
     return;
@@ -3642,9 +3655,9 @@ async function openOverlayPopout() {
   popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>FootyOverlay</title></head><body></body></html>');
   popup.document.close();
   copyStylesToDocument(popup.document);
-  popup.document.documentElement.style.background = 'transparent';
+  popup.document.documentElement.style.background = '#0d1117';
   popup.document.body.style.margin = '0';
-  popup.document.body.style.background = 'transparent';
+  popup.document.body.style.background = '#0d1117';
   popup.document.body.appendChild(overlay);
   overlay.classList.add('popout');
   overlay.style.left = '0';
