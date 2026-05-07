@@ -1872,6 +1872,7 @@
   <div class="overlay-header" id="overlay-drag-handle">
     <span class="overlay-title">LIVE SCORES</span>
     <div class="overlay-controls">
+      <button class="overlay-btn" id="overlay-popout-btn" aria-label="Pop out overlay" title="Pop out overlay">⧉</button>
       <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
       <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
     </div>
@@ -2314,11 +2315,23 @@ const State = {
   scoreboardMode: false,   // If true: show all players, no toasts
   overlayVisible: false,
   overlayMinimised: false,
+  overlayElement: null,     // #overlay DOM node (can be moved to PiP/popup window)
+  overlayPopoutWindow: null,
+  overlayPopoutMode: null,  // 'pip' | 'popup' | null
   overlayPosition: { x: null, y: null }, // null = use CSS default
   prevScores: {},          // { [playerId]: score } — used to detect changes for flashing
   pollingTimers: {},       // Named timers for polling
   confirmCallback: null,   // Callback for the confirm modal
 };
+
+function getOverlayElement() {
+  return State.overlayElement || document.getElementById('overlay');
+}
+
+function getOverlayDocument() {
+  const overlay = getOverlayElement();
+  return overlay ? overlay.ownerDocument : document;
+}
 
 /* ================================================================
    LOCAL STORAGE HELPERS
@@ -3523,7 +3536,7 @@ document.getElementById('btn-customise-players').addEventListener('click', () =>
    ================================================================ */
 function activateOverlay() {
   State.overlayVisible = true;
-  const overlay = document.getElementById('overlay');
+  const overlay = getOverlayElement();
   overlay.classList.add('active');
   State.overlayMinimised = false;
   overlay.classList.remove('minimised');
@@ -3532,7 +3545,8 @@ function activateOverlay() {
 
 function deactivateOverlay() {
   State.overlayVisible = false;
-  document.getElementById('overlay').classList.remove('active');
+  const overlay = getOverlayElement();
+  if (overlay) overlay.classList.remove('active');
 }
 
 document.getElementById('overlay-toggle-btn').addEventListener('click', () => {
@@ -3541,12 +3555,110 @@ document.getElementById('overlay-toggle-btn').addEventListener('click', () => {
 
 document.getElementById('overlay-close-btn').addEventListener('click', deactivateOverlay);
 
+document.getElementById('overlay-popout-btn').addEventListener('click', async () => {
+  if (State.overlayPopoutWindow) {
+    closeOverlayPopout();
+  } else {
+    await openOverlayPopout();
+  }
+});
+
 document.getElementById('overlay-minimise-btn').addEventListener('click', () => {
   State.overlayMinimised = !State.overlayMinimised;
   const overlay = document.getElementById('overlay');
   overlay.classList.toggle('minimised', State.overlayMinimised);
   document.getElementById('overlay-minimise-btn').textContent = State.overlayMinimised ? '+' : '−';
 });
+
+function copyStylesToDocument(targetDoc) {
+  const nodes = document.querySelectorAll('style,link[rel="stylesheet"]');
+  nodes.forEach(node => targetDoc.head.appendChild(node.cloneNode(true)));
+}
+
+function updateOverlayPopoutButton() {
+  const btn = document.getElementById('overlay-popout-btn');
+  if (!btn) return;
+  const active = !!State.overlayPopoutWindow;
+  btn.textContent = active ? '⇲' : '⧉';
+  btn.title = active ? 'Return overlay to main window' : 'Pop out overlay';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+async function openOverlayPopout() {
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+
+  try {
+    if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
+      const pipWin = await window.documentPictureInPicture.requestWindow({ width: 420, height: 740 });
+      copyStylesToDocument(pipWin.document);
+      pipWin.document.body.style.margin = '0';
+      pipWin.document.body.style.background = 'transparent';
+      pipWin.document.body.appendChild(overlay);
+      overlay.style.left = '0';
+      overlay.style.top = '0';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      overlay.style.width = '100%';
+      overlay.style.maxWidth = 'none';
+      overlay.style.height = '100%';
+
+      State.overlayPopoutWindow = pipWin;
+      State.overlayPopoutMode = 'pip';
+      updateOverlayPopoutButton();
+      pipWin.addEventListener('pagehide', () => closeOverlayPopout(true), { once: true });
+      return;
+    }
+  } catch (err) {
+    console.warn('[FootyOverlay] Document PiP unavailable:', err?.message || err);
+  }
+
+  const popup = window.open('', 'footyoverlay_overlay', 'popup=yes,width=420,height=740');
+  if (!popup) {
+    showToast('⚠️', 'Popup blocked', 'Allow popups to use cross-app overlay window', 0, 'neutral');
+    return;
+  }
+
+  popup.document.open();
+  popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>FootyOverlay</title></head><body></body></html>');
+  popup.document.close();
+  copyStylesToDocument(popup.document);
+  popup.document.body.style.margin = '0';
+  popup.document.body.style.background = 'transparent';
+  popup.document.body.appendChild(overlay);
+  overlay.style.left = '0';
+  overlay.style.top = '0';
+  overlay.style.right = 'auto';
+  overlay.style.bottom = 'auto';
+  overlay.style.width = '100%';
+  overlay.style.maxWidth = 'none';
+  overlay.style.height = '100%';
+
+  State.overlayPopoutWindow = popup;
+  State.overlayPopoutMode = 'popup';
+  updateOverlayPopoutButton();
+  popup.addEventListener('beforeunload', () => closeOverlayPopout(true), { once: true });
+}
+
+function closeOverlayPopout(fromWindowEvent = false) {
+  const win = State.overlayPopoutWindow;
+  const overlay = getOverlayElement();
+  if (!win || !overlay) return;
+
+  document.body.appendChild(overlay);
+  overlay.style.width = '';
+  overlay.style.maxWidth = '';
+  overlay.style.height = '';
+  applyOverlayPosition(State.activeProfile?.settings.overlayPosition || 'top-right');
+
+  if (!fromWindowEvent) {
+    try { win.close(); } catch (_) { /* no-op */ }
+  }
+
+  State.overlayPopoutWindow = null;
+  State.overlayPopoutMode = null;
+  updateOverlayPopoutButton();
+}
 
 // Opacity sync (overlay slider → setting slider and vice versa)
 document.getElementById('overlay-opacity-slider').addEventListener('input', e => {
@@ -3561,7 +3673,7 @@ document.getElementById('overlay-opacity-slider').addEventListener('input', e =>
 
 /* ---- DRAGGABLE OVERLAY ---- */
 (function initDrag() {
-  const overlay = document.getElementById('overlay');
+  const overlay = getOverlayElement();
   const handle  = document.getElementById('overlay-drag-handle');
   let isDragging = false;
   let startX, startY, startLeft, startTop;
@@ -3608,7 +3720,10 @@ document.getElementById('overlay-opacity-slider').addEventListener('input', e =>
  * Uses the active scoring system (DT or SC) for scores and totals.
  */
 function renderOverlayTables() {
-  const wrap = document.getElementById('overlay-tables-wrap');
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+  const wrap = overlay.querySelector('#overlay-tables-wrap');
+  if (!wrap) return;
   wrap.innerHTML = '';
 
   if (!State.currentGame) return;
@@ -3704,6 +3819,8 @@ function renderOverlayTables() {
  */
 function updateOverlayScores(players) {
   if (!State.overlayVisible) return;
+  const overlay = getOverlayElement();
+  if (!overlay) return;
 
   const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
   const playerScore = p => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
@@ -3725,7 +3842,7 @@ function updateOverlayScores(players) {
     const prev = State.prevScores[p.id] ?? curScore;
     overlayTeams.forEach(team => {
       if (!team.playerIds.includes(p.id)) return;
-      const cell = document.getElementById(`score-cell-${team.id}-${p.id}`);
+      const cell = overlay.querySelector(`#score-cell-${team.id}-${p.id}`);
       if (!cell) return;
       cell.textContent = curScore;
       if (curScore !== prev) {
@@ -3744,7 +3861,7 @@ function updateOverlayScores(players) {
     const total = players
       .filter(p => team.playerIds.includes(p.id))
       .reduce((s, p) => s + playerScore(p), 0);
-    const nameEl = document.querySelector(`.overlay-team-table[data-team-id="${team.id}"] .overlay-team-name`);
+    const nameEl = overlay.querySelector(`.overlay-team-table[data-team-id="${team.id}"] .overlay-team-name`);
     if (nameEl) {
       const span = nameEl.querySelector('span');
       if (span) span.textContent = `${total} pts`;
@@ -3752,7 +3869,7 @@ function updateOverlayScores(players) {
   });
 
   // Keep rows sorted by score descending after live score updates.
-  document.querySelectorAll('.overlay-team-table tbody').forEach(tbody => {
+  overlay.querySelectorAll('.overlay-team-table tbody').forEach(tbody => {
     const rows = Array.from(tbody.querySelectorAll('tr'));
     rows.sort((rA, rB) => {
       const aScore = Number((rA.children[2]?.textContent || '0').trim()) || 0;
@@ -3770,12 +3887,14 @@ function updateOverlayScores(players) {
    OVERLAY POSITIONING & OPACITY
    ================================================================ */
 function setOverlayOpacity(pct) {
-  document.getElementById('overlay').style.opacity = pct / 100;
+  const overlay = getOverlayElement();
+  if (overlay) overlay.style.opacity = pct / 100;
 }
 
 function applyOverlayPosition(position) {
-  const el = document.getElementById('overlay');
-  el.style.cssText = `opacity:${document.getElementById('overlay').style.opacity};`;
+  const el = getOverlayElement();
+  if (!el) return;
+  el.style.cssText = `opacity:${el.style.opacity};`;
   switch(position) {
     case 'top-right':    el.style.top='80px'; el.style.right='20px'; el.style.left='auto'; el.style.bottom='auto'; break;
     case 'top-left':     el.style.top='80px'; el.style.left='20px'; el.style.right='auto'; el.style.bottom='auto'; break;
@@ -4133,6 +4252,9 @@ function escHtml(str) {
    INIT — Entry point
    ================================================================ */
 function init() {
+  State.overlayElement = document.getElementById('overlay');
+  updateOverlayPopoutButton();
+
   // ── Mock mode ──────────────────────────────────────────────────────────────
   const params = new URLSearchParams(window.location.search);
   if (params.get('mock') === 'true') {
