@@ -731,8 +731,8 @@
     /* Radio group */
     .radio-group {
       display: flex;
+      flex-direction: column;
       gap: 8px;
-      flex-wrap: wrap;
     }
     .radio-option {
       position: relative;
@@ -1558,6 +1558,45 @@
     }
 
     /* ============================================================
+       CYCLE SELECT — D-pad-friendly option cycler
+       ============================================================ */
+    .cycle-select {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      min-width: 170px;
+      justify-content: space-between;
+      transition: var(--transition);
+    }
+    .cycle-select:focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+    }
+    .cycle-arrow {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 0 2px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .cycle-arrow:hover { color: var(--text-primary); }
+    .cycle-display {
+      flex: 1;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    /* ============================================================
        ANDROID TV — D-pad nav enhancements
        ============================================================ */
     @media (min-width: 1920px) {
@@ -1772,7 +1811,12 @@
           <div>
             <div class="toggle-label">Overlay Position</div>
           </div>
-          <select id="setting-position" aria-label="Overlay position">
+          <div class="cycle-select" id="cycle-setting-position" tabindex="0" role="group" aria-label="Overlay position">
+            <button class="cycle-arrow" data-dir="-1" tabindex="-1" aria-label="Previous option">◀</button>
+            <span class="cycle-display">Top Right</span>
+            <button class="cycle-arrow" data-dir="1" tabindex="-1" aria-label="Next option">▶</button>
+          </div>
+          <select id="setting-position" aria-label="Overlay position" style="display:none">
             <option value="top-right">Top Right</option>
             <option value="top-left">Top Left</option>
             <option value="bottom-right">Bottom Right</option>
@@ -1825,7 +1869,12 @@
             <div class="toggle-label">Live Poll Interval</div>
             <div class="toggle-desc">How often to refresh live game data</div>
           </div>
-          <select id="setting-poll-interval" aria-label="Poll interval for live games">
+          <div class="cycle-select" id="cycle-setting-poll-interval" tabindex="0" role="group" aria-label="Poll interval for live games">
+            <button class="cycle-arrow" data-dir="-1" tabindex="-1" aria-label="Previous option">◀</button>
+            <span class="cycle-display">Every 30 seconds</span>
+            <button class="cycle-arrow" data-dir="1" tabindex="-1" aria-label="Next option">▶</button>
+          </div>
+          <select id="setting-poll-interval" aria-label="Poll interval for live games" style="display:none">
             <option value="15">Every 15 seconds</option>
             <option value="30" selected>Every 30 seconds</option>
             <option value="60">Every 60 seconds</option>
@@ -1867,6 +1916,10 @@
   <div class="overlay-header" id="overlay-drag-handle">
     <span class="overlay-title">LIVE SCORES</span>
     <div class="overlay-controls">
+      <button class="overlay-btn" id="overlay-snap-tl" aria-label="Snap to top-left"     title="Top Left">↖</button>
+      <button class="overlay-btn" id="overlay-snap-tr" aria-label="Snap to top-right"    title="Top Right">↗</button>
+      <button class="overlay-btn" id="overlay-snap-bl" aria-label="Snap to bottom-left"  title="Bottom Left">↙</button>
+      <button class="overlay-btn" id="overlay-snap-br" aria-label="Snap to bottom-right" title="Bottom Right">↘</button>
       <button class="overlay-btn" id="overlay-popout-btn" aria-label="Pop out overlay" title="Pop out overlay">⧉</button>
       <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
       <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
@@ -2491,7 +2544,7 @@ function applyProfileSettings(user) {
 
   // ── Overlay position dropdown ─────────────────────────────────────────────
   const posEl = document.getElementById('setting-position');
-  if (posEl) posEl.value = s.overlayPosition || 'top-right';
+  if (posEl) { posEl.value = s.overlayPosition || 'top-right'; posEl.dispatchEvent(new Event('change')); }
 
   // ── Notification toggles ──────────────────────────────────────────────────
   const toastsEl = document.getElementById('setting-toasts');
@@ -2510,7 +2563,7 @@ function applyProfileSettings(user) {
 
   // ── Poll interval dropdown ────────────────────────────────────────────────
   const pollEl = document.getElementById('setting-poll-interval');
-  if (pollEl) pollEl.value = s.pollInterval || 30;
+  if (pollEl) { pollEl.value = s.pollInterval || 30; pollEl.dispatchEvent(new Event('change')); }
 
   // ── Restore custom teams into State ──────────────────────────────────────
   State.customTeams = [...(user.customTeams || [])];
@@ -3541,7 +3594,7 @@ function openPlayerPicker(team) {
         allCheck.style.borderColor = allSel ? 'var(--accent-blue)' : '';
       };
       row.addEventListener('click', toggle);
-      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }});
+      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggle(); }});
       list.appendChild(row);
     });
 
@@ -3566,7 +3619,7 @@ function openPlayerPicker(team) {
       updateCount();
     };
     allRow.addEventListener('click', toggleAll);
-    allRow.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAll(); }});
+    allRow.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); toggleAll(); }});
 
     panel.appendChild(list);
     wrap.appendChild(panel);
@@ -3631,6 +3684,18 @@ document.getElementById('overlay-popout-btn').addEventListener('click', async ()
   } else {
     await openOverlayPopout();
   }
+});
+
+const _snapPositions = { tl: 'top-left', tr: 'top-right', bl: 'bottom-left', br: 'bottom-right' };
+['tl', 'tr', 'bl', 'br'].forEach(key => {
+  document.getElementById(`overlay-snap-${key}`).addEventListener('click', () => {
+    const pos = _snapPositions[key];
+    applyOverlayPosition(pos);
+    if (State.activeProfile) {
+      State.activeProfile.settings.overlayPosition = pos;
+      saveCurrentProfile();
+    }
+  });
 });
 
 document.getElementById('overlay-minimise-btn').addEventListener('click', () => {
@@ -4193,6 +4258,51 @@ function stopPolling() {
 }
 
 /* ================================================================
+   CYCLE SELECT — initialise custom left/right option cycler
+   ================================================================ */
+function initCycleSelect(wrapperId, selectId) {
+  const wrapper = document.getElementById(wrapperId);
+  const select  = document.getElementById(selectId);
+  if (!wrapper || !select) return;
+
+  const display = wrapper.querySelector('.cycle-display');
+  const options = [...select.options];
+
+  function sync() {
+    display.textContent = options[select.selectedIndex]?.text || '';
+  }
+  sync();
+
+  function step(delta) {
+    const n = options.length;
+    select.selectedIndex = (select.selectedIndex + delta + n) % n;
+    sync();
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // Left/right arrow keys cycle options; stop propagation so SpatialNav doesn't move focus
+  wrapper.addEventListener('keydown', e => {
+    if (e.keyCode === 37) { e.preventDefault(); e.stopPropagation(); step(-1); }
+    if (e.keyCode === 39) { e.preventDefault(); e.stopPropagation(); step(1); }
+  });
+
+  // ◀ / ▶ buttons
+  wrapper.querySelectorAll('.cycle-arrow').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      step(parseInt(btn.dataset.dir, 10));
+      wrapper.focus();
+    });
+  });
+
+  // Keep display in sync when hidden select is changed programmatically
+  select.addEventListener('change', sync);
+}
+
+initCycleSelect('cycle-setting-position',     'setting-position');
+initCycleSelect('cycle-setting-poll-interval', 'setting-poll-interval');
+
+/* ================================================================
    SETTINGS WIRING
    ================================================================ */
 document.getElementById('setting-position').addEventListener('change', e => {
@@ -4376,7 +4486,18 @@ const SpatialNav = (() => {
       if (s < bestScore) { bestScore = s; best = el; }
     }
 
-    if (best) { best.focus({ preventScroll: false }); return true; }
+    if (best) {
+      best.focus({ preventScroll: false });
+      // Keep focused card visible in horizontal scroll rows
+      if (best.closest('.games-scroll-row')) {
+        best.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+      }
+      // Keep focused pick-row visible inside the scrollable pick-list
+      if (best.closest('.pick-list')) {
+        best.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+      return true;
+    }
     return false;
   }
 
