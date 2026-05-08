@@ -3166,7 +3166,13 @@ document.getElementById('game-detail-back').addEventListener('click', () => show
 
 // Begin Overlay
 document.getElementById('btn-begin-overlay').addEventListener('click', async () => {
-  if (!State.currentGame) return;
+  console.log('[FootyOverlay] Begin Overlay pressed');
+
+  // ── Guards ──────────────────────────────────────────────────────────────────
+  if (!State.currentGame) {
+    console.warn('[FootyOverlay] Begin Overlay: no currentGame, aborting');
+    return;
+  }
   const hasSelections = State.scoreboardMode ||
     State.customTeams.some(t => t.playerIds.length > 0);
   if (!hasSelections) {
@@ -3174,51 +3180,69 @@ document.getElementById('btn-begin-overlay').addEventListener('click', async () 
     return;
   }
 
-  // Persist state via lsSet (wrapped key) for any code that still reads those keys
+  // ── Persist state ───────────────────────────────────────────────────────────
   lsSet('overlay_currentGame',    State.currentGame);
   lsSet('overlay_customTeams',    State.customTeams);
   lsSet('overlay_scoreboardMode', State.scoreboardMode);
   lsSet('overlay_settings',       State.activeUser?.settings || defaultSettings());
-
-  // Also write with simple top-level keys as a reliable cross-WebView fallback.
-  // The OverlayService WebView may not share the Capacitor WebView's localStorage,
-  // so we write both and let the overlay pick up whichever is available.
   try {
     localStorage.setItem('fo_overlay_game',  JSON.stringify(State.currentGame));
     localStorage.setItem('fo_overlay_teams', JSON.stringify(State.customTeams));
   } catch (_) { /* storage full / private mode — URL params are the real source */ }
 
-  // On Android the native OverlayPlugin starts the system overlay service.
-  // In a browser or non-Capacitor environment fall back to the in-app overlay.
+  // ── Browser / non-Capacitor fallback ────────────────────────────────────────
   const plugin = window.Capacitor?.Plugins?.OverlayPlugin;
   if (!plugin) {
+    console.log('[FootyOverlay] No OverlayPlugin — using in-app overlay');
     activateOverlay();
     return;
   }
 
-  const { granted } = await plugin.checkPermission();
-  if (!granted) {
-    showToast('🔐', 'Permission needed',
-      'Grant "Display over other apps" in the next screen, then press Begin Overlay again.',
-      0, 'neutral');
-    await plugin.requestPermission();
-    return;
+  // ── Everything below is wrapped in try/catch so errors surface as toasts ───
+  try {
+    // Permission check
+    console.log('[FootyOverlay] Checking overlay permission...');
+    const { granted } = await plugin.checkPermission();
+    console.log('[FootyOverlay] Permission granted:', granted);
+    if (!granted) {
+      showToast('🔐', 'Permission needed',
+        'Grant "Display over other apps" in the next screen, then press Begin Overlay again.',
+        0, 'neutral');
+      await plugin.requestPermission();
+      return;
+    }
+
+    // Always stop any existing overlay first.
+    // stopService() is a no-op when nothing is running, so this is always safe.
+    // The 400 ms pause gives Android time to call onDestroy() and null out the
+    // WebView field before onStartCommand() fires again — prevents the "already
+    // running" guard from blocking a fresh start.
+    console.log('[FootyOverlay] Stopping any existing overlay before (re)start...');
+    try { await plugin.stopOverlay(); } catch (_) { /* nothing was running */ }
+    await new Promise(r => setTimeout(r, 400));
+    console.log('[FootyOverlay] Stop wait complete — proceeding to start');
+
+    // Build URL params
+    const _ovGameId  = State.currentGame.id;
+    const _ovTeamIds = State.customTeams.map(t => t.id).join(',');
+    const _ovSBMode  = State.scoreboardMode ? '1' : '0';
+    const _ovScoring = State.activeUser?.settings?.scoringSystem || 'afl_fantasy';
+    console.log('[FootyOverlay] startOverlay — gameId:', _ovGameId, 'teams:', _ovTeamIds);
+
+    await plugin.startOverlay({
+      gameId:         _ovGameId,
+      teamIds:        _ovTeamIds,
+      scoreboardMode: _ovSBMode,
+      scoringSystem:  _ovScoring,
+    });
+    console.log('[FootyOverlay] startOverlay() resolved — service launched');
+    showToast('✅', 'Overlay started', 'Score overlay is now showing on top of other apps.', 0, 'neutral');
+
+  } catch (err) {
+    // Surface any Capacitor bridge / service error so we can diagnose it
+    console.error('[FootyOverlay] Begin Overlay failed:', err);
+    showToast('❌', 'Overlay error', String(err?.message || err), 0, 'neutral');
   }
-
-  // Primary data channel: encode identifiers as URL params so OverlayService can
-  // embed them in the WebView URL — no shared localStorage required.
-  const _ovGameId  = State.currentGame.id;
-  const _ovTeamIds = State.customTeams.map(t => t.id).join(',');
-  const _ovSBMode  = State.scoreboardMode ? '1' : '0';
-  const _ovScoring = State.activeUser?.settings?.scoringSystem || 'afl_fantasy';
-
-  await plugin.startOverlay({
-    gameId:        _ovGameId,
-    teamIds:       _ovTeamIds,
-    scoreboardMode: _ovSBMode,
-    scoringSystem:  _ovScoring,
-  });
-  showToast('✅', 'Overlay started', 'Score overlay is now showing on top of other apps.', 0, 'neutral');
 });
 
 /* ================================================================
