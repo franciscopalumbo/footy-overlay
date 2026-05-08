@@ -1,5 +1,4449 @@
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8" />
-<meta http-equiv="refresh" content="0;url=https://footyoverlay.netlify.app" />
-<title>FootyOverlay</title></head>
-<body></body></html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="FootyOverlay — Live AFL Fantasy & SuperCoach Scoring Overlay" />
+  <title>FootyOverlay</title>
+
+  <!-- Google Fonts: Bebas Neue (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       CSS CUSTOM PROPERTIES — Edit these to retheme the entire app
+       ============================================================ */
+    :root {
+      --bg-primary:    #0d1117;
+      --bg-secondary:  #161b22;
+      --bg-card:       rgba(255, 255, 255, 0.05);
+      --bg-card-hover: rgba(255, 255, 255, 0.08);
+      --accent-live:   #00ff88;
+      --accent-alert:  #ffb800;
+      --accent-blue:   #3b82f6;
+      --accent-red:    #ef4444;
+      --text-primary:  #f0f4f8;
+      --text-muted:    #8b95a1;
+      --border:        rgba(255, 255, 255, 0.08);
+      --border-hover:  rgba(255, 255, 255, 0.18);
+      --radius:        12px;
+      --radius-sm:     8px;
+      --shadow:        0 8px 32px rgba(0, 0, 0, 0.4);
+      --transition:    all 0.22s ease;
+
+      /* Typography scale */
+      --font-display: 'Bebas Neue', 'Barlow Condensed', sans-serif;
+      --font-body:    'DM Sans', sans-serif;
+
+      /* Spacing */
+      --nav-height:   64px;
+      --nav-bottom:   72px; /* mobile bottom nav height */
+    }
+
+    /* ============================================================
+       Z-INDEX STACK (all layers documented here — edit in one place)
+       nav=100 | overlay-widget=200 | login-screen=300 | modal-backdrop=400 | toasts=500
+       ============================================================ */
+
+    /* ============================================================
+       RESET & BASE
+       ============================================================ */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 16px;
+      line-height: 1.5;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Android TV / 10-foot UI: bump base font */
+    @media (min-width: 1920px) {
+      html { font-size: 20px; }
+    }
+
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; font-family: var(--font-body); }
+    input, select, textarea { font-family: var(--font-body); }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 3px; }
+
+    /* ============================================================
+       FOCUS STYLES — Critical for Android TV D-pad navigation
+       ============================================================ */
+    :focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+      border-radius: var(--radius-sm);
+    }
+
+    /* ============================================================
+       LAYOUT SHELL
+       ============================================================ */
+    #app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* ---- Top Header (desktop) ---- */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: var(--nav-height);
+      background: rgba(13, 17, 23, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100; /* nav layer */
+    }
+
+    .header-logo {
+      font-family: var(--font-display);
+      font-size: 1.8rem;
+      letter-spacing: 0.05em;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .header-logo span.dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--accent-live);
+      box-shadow: 0 0 10px var(--accent-live);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; box-shadow: 0 0 10px var(--accent-live); }
+      50%       { opacity: 0.6; box-shadow: 0 0 4px var(--accent-live); }
+    }
+
+    /* Desktop top nav tabs */
+    #top-nav {
+      display: flex;
+      gap: 4px;
+    }
+
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: var(--transition);
+      white-space: nowrap;
+    }
+    .nav-tab:hover, .nav-tab:focus-visible {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border);
+    }
+    .nav-tab.active {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: transparent;
+    }
+    .nav-tab .nav-icon { font-size: 1rem; }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Mock-mode badge */
+    #mock-badge {
+      display: none;
+      padding: 4px 10px;
+      background: var(--accent-alert);
+      color: #000;
+      font-size: 0.7rem;
+      font-weight: 700;
+      border-radius: 20px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    body.mock-mode #mock-badge { display: flex; align-items: center; gap: 4px; }
+
+    /* User identity chip + dropdown in header */
+    #user-menu-wrap {
+      position: relative;
+    }
+    #user-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px 5px 5px;
+      border-radius: 24px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      cursor: pointer;
+      transition: var(--transition);
+      max-width: 220px;
+    }
+    #user-chip:hover, #user-chip:focus-visible {
+      border-color: var(--border-hover);
+      background: var(--bg-card-hover);
+    }
+    .user-initials {
+      width: 30px; height: 30px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+      letter-spacing: 0.03em;
+    }
+    .user-chip-text {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      min-width: 0;
+    }
+    .user-chip-name {
+      font-size: 0.8rem;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+      color: var(--text-primary);
+    }
+    .user-chip-email {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 130px;
+    }
+    .user-chip-caret {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    /* Dropdown */
+    #user-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      min-width: 180px;
+      box-shadow: var(--shadow);
+      z-index: 150;
+      overflow: hidden;
+      animation: modal-in 0.18s ease both;
+    }
+    #user-dropdown.open { display: block; }
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 11px 16px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      cursor: pointer;
+      border: none;
+      background: transparent;
+      width: 100%;
+      text-align: left;
+      transition: background 0.15s;
+    }
+    .dropdown-item:hover, .dropdown-item:focus-visible {
+      background: var(--bg-card-hover);
+      outline: none;
+    }
+    .dropdown-item.danger { color: var(--accent-red); }
+
+    /* ---- Main content area ---- */
+    #main {
+      flex: 1;
+      padding: 24px;
+      padding-bottom: calc(var(--nav-bottom) + 24px);
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Mobile bottom nav */
+    #bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: var(--nav-bottom);
+      background: rgba(13, 17, 23, 0.96);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      z-index: 100; /* nav layer */
+      justify-content: space-around;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    .bottom-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px 20px;
+      border-radius: var(--radius-sm);
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      font-weight: 500;
+      transition: var(--transition);
+    }
+    .bottom-tab .tab-icon { font-size: 1.4rem; }
+    .bottom-tab.active { color: var(--accent-live); }
+    .bottom-tab:focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+    }
+
+    /* Show bottom nav on mobile/TV */
+    @media (max-width: 768px) {
+      #top-nav { display: none; }
+      #bottom-nav { display: flex; }
+      #main { padding: 16px; padding-bottom: calc(var(--nav-bottom) + 16px); }
+    }
+
+    /* ============================================================
+       VIEW MANAGEMENT — views swap in/out via .active class
+       ============================================================ */
+    .view {
+      display: none;
+      animation: view-in 0.25s ease both;
+    }
+    .view.active { display: block; }
+
+    @keyframes view-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ============================================================
+       SECTION HEADINGS
+       ============================================================ */
+    .section-heading {
+      font-family: var(--font-display);
+      font-size: 1.6rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-heading .live-pill {
+      font-family: var(--font-body);
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      padding: 3px 8px;
+      background: var(--accent-live);
+      color: #000;
+      border-radius: 20px;
+      animation: blink-live 1.5s ease-in-out infinite;
+    }
+
+    @keyframes blink-live {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    /* ============================================================
+       GAME CARDS — Watch Tab
+       ============================================================ */
+    /* Horizontal scroll row for live games */
+    .games-scroll-row {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding-bottom: 12px;
+      scroll-snap-type: x mandatory;
+      margin-bottom: 32px;
+    }
+    .games-scroll-row::-webkit-scrollbar { height: 4px; }
+
+    /* Upcoming games grid */
+    .games-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .game-card {
+      flex-shrink: 0;
+      width: 300px; /* for scroll row */
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0;
+      overflow: hidden;
+      cursor: pointer;
+      transition: var(--transition);
+      backdrop-filter: blur(8px);
+      scroll-snap-align: start;
+      position: relative;
+    }
+    .game-card:hover, .game-card:focus-visible {
+      background: var(--bg-card-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+
+    /* Grid cards are full-width */
+    .games-grid .game-card { width: auto; }
+
+    /* Team colour stripe — left border, colour set via data attr + inline style */
+    .game-card-stripe {
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 4px;
+    }
+
+    .game-card-inner {
+      padding: 16px 16px 16px 22px;
+    }
+
+    .game-card-status {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-live);
+      border: 1px solid var(--accent-live);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .live-badge::before {
+      content: '';
+      display: inline-block;
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent-live);
+      animation: blink-live 1.5s ease-in-out infinite;
+    }
+
+    .upcoming-badge {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    .final-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--accent-alert);
+      border: 1px solid var(--accent-alert);
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .game-quarter {
+      font-size: 0.72rem;
+      color: var(--accent-alert);
+      font-weight: 600;
+    }
+
+    .game-teams {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .game-team-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .team-name {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      letter-spacing: 0.04em;
+      flex: 1;
+    }
+
+    .team-score {
+      font-family: var(--font-display);
+      font-size: 2rem;
+      letter-spacing: 0.02em;
+      color: var(--text-primary);
+    }
+    .team-score.leader { color: var(--accent-live); }
+
+    .game-meta {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+    .game-meta span { display: flex; align-items: center; gap: 4px; }
+
+    /* Empty state */
+    .empty-state {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--text-muted);
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* ============================================================
+       GLASS CARD — reusable component
+       ============================================================ */
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      backdrop-filter: blur(12px);
+      padding: 24px;
+    }
+
+    /* ============================================================
+       BUTTONS
+       ============================================================ */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      font-size: 0.875rem;
+      font-weight: 600;
+      transition: var(--transition);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn:focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: #fff;
+      border-color: var(--accent-blue);
+    }
+    .btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+
+    .btn-live {
+      background: transparent;
+      color: var(--accent-live);
+      border-color: var(--accent-live);
+    }
+    .btn-live:hover { background: rgba(0,255,136,0.08); }
+
+    .btn-ghost {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border-color: var(--border);
+    }
+    .btn-ghost:hover { background: var(--bg-card-hover); border-color: var(--border-hover); }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--accent-red);
+      border-color: var(--accent-red);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.08); }
+
+    .btn-lg {
+      padding: 14px 28px;
+      font-size: 1rem;
+      border-radius: var(--radius);
+    }
+
+    .btn-sm {
+      padding: 6px 14px;
+      font-size: 0.8rem;
+    }
+
+    /* ============================================================
+       FORM ELEMENTS
+       ============================================================ */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+    }
+
+    input[type="text"],
+    input[type="number"],
+    input[type="url"],
+    textarea,
+    select {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      padding: 10px 14px;
+      font-size: 0.9rem;
+      transition: var(--transition);
+      width: 100%;
+    }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: var(--accent-blue);
+      box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
+    }
+    input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+    }
+    select option { background: #1c2432; color: var(--text-primary); }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255,255,255,0.1);
+      border-radius: 4px;
+      height: 6px;
+      cursor: pointer;
+      width: 100%;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(59,130,246,0.5);
+    }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-label { font-size: 0.9rem; font-weight: 500; }
+    .toggle-desc { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+
+    .toggle {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,0.1);
+      border-radius: 24px;
+      transition: var(--transition);
+      cursor: pointer;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      height: 18px; width: 18px;
+      left: 3px; bottom: 3px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      transition: var(--transition);
+    }
+    .toggle input:checked + .toggle-slider { background: var(--accent-blue); }
+    .toggle input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+      background: #fff;
+    }
+    .toggle input:focus-visible + .toggle-slider,
+    .toggle:focus-visible .toggle-slider {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+      border-radius: 24px;
+    }
+
+    /* Radio group */
+    .radio-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .radio-option {
+      position: relative;
+    }
+    .radio-option input[type="radio"] {
+      position: absolute;
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .radio-option label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      color: var(--text-muted);
+      transition: var(--transition);
+    }
+    .radio-option input[type="radio"]:checked + label {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+      background: rgba(59,130,246,0.1);
+    }
+    .radio-option input[type="radio"]:focus-visible + label,
+    .radio-option label:focus-visible {
+      outline: 4px solid var(--accent-live);
+      outline-offset: 4px;
+      box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25);
+    }
+
+    /* ============================================================
+       MODAL
+       ============================================================ */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 400; /* modal-backdrop layer — must exceed login-screen (300) */
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .modal-backdrop.open { display: flex; }
+
+    .modal {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      animation: modal-in 0.25s ease both;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.95) translateY(-12px); }
+      to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-title {
+      font-family: var(--font-display);
+      font-size: 1.4rem;
+      letter-spacing: 0.05em;
+    }
+    .modal-close {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition);
+    }
+    .modal-close:hover { background: var(--bg-card); color: var(--text-primary); }
+
+    .modal-body { padding: 24px; }
+    .modal-footer {
+      padding: 16px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ============================================================
+       LOGIN SCREEN
+       ============================================================ */
+    #login-screen {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: var(--bg-primary);
+      z-index: 300; /* login-screen layer */
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #login-screen.open { display: flex; }
+
+    .login-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+      animation: modal-in 0.3s ease both;
+    }
+
+    .login-logo {
+      font-family: var(--font-display);
+      font-size: 2.2rem;
+      letter-spacing: 0.06em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .login-tagline {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+    }
+    .login-card .form-group { margin-bottom: 20px; }
+    .login-card .form-group:last-of-type { margin-bottom: 28px; }
+
+    .login-footer-note {
+      margin-top: 20px;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* ============================================================
+       GAME DETAIL VIEW (View 2)
+       ============================================================ */
+    #view-game-detail .game-detail-header {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+
+    .back-btn {
+      padding: 8px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 1rem;
+      transition: var(--transition);
+    }
+    .back-btn:hover, .back-btn:focus-visible {
+      background: var(--bg-card);
+      color: var(--text-primary);
+    }
+
+    .game-detail-title {
+      flex: 1;
+    }
+    .game-detail-matchup {
+      font-family: var(--font-display);
+      font-size: 2.4rem;
+      letter-spacing: 0.05em;
+    }
+    .game-detail-live-score {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      color: var(--accent-live);
+      letter-spacing: 0.08em;
+    }
+
+    /* Action buttons row */
+    .game-detail-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 32px;
+    }
+
+    /* ============================================================
+       CUSTOMISE PLAYERS VIEW (View 3) — team card + player modal system
+       ============================================================ */
+
+    /* Team cards stack vertically */
+    .team-cards-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    /* Each team card */
+    .team-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: visible; /* must be visible so colour popover isn't clipped */
+      transition: var(--transition);
+    }
+
+    .team-card-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-left: 5px solid var(--accent-blue);
+      background: rgba(255,255,255,0.03);
+      overflow: hidden; /* clip children to card header radius */
+      border-radius: var(--radius) var(--radius) 0 0;
+    }
+
+    .team-card-body {
+      overflow: hidden;
+    }
+
+    .team-card-footer {
+      overflow: hidden;
+    }
+
+    /* Colour picker — single circle button; popover is appended to body */
+    .colour-picker-wrap {
+      position: relative;
+      flex-shrink: 0;
+    }
+    .colour-picker-btn {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.35);
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.15s, transform 0.15s;
+      background: var(--accent-blue); /* overridden inline */
+      padding: 0;
+    }
+    .colour-picker-btn:hover { border-color: rgba(255,255,255,0.8); transform: scale(1.1); }
+    /* Popover — appended to <body> so it is never clipped by card overflow */
+    .colour-popover {
+      position: absolute;
+      z-index: 450;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-hover);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      box-shadow: var(--shadow);
+    }
+    .colour-swatch {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      flex-shrink: 0;
+      transition: transform 0.12s, border-color 0.12s;
+    }
+    .colour-swatch:hover { transform: scale(1.18); }
+    .colour-swatch.active { border-color: #fff; }
+
+    .team-card-name {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      flex: 1;
+      min-width: 0;
+    }
+    .team-card-name input {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      letter-spacing: 0.04em;
+      background: transparent;
+      border: none;
+      border-bottom: 1px dashed var(--border);
+      color: var(--text-primary);
+      width: 100%;
+      padding: 0;
+    }
+    .team-card-name input:focus { outline: none; border-bottom-color: var(--accent-blue); }
+
+    .team-card-count {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      background: var(--bg-secondary);
+      padding: 2px 8px;
+      border-radius: 20px;
+      white-space: nowrap;
+    }
+
+    .team-card-body {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    /* Player list inside a team card */
+    .team-card-player-list {
+      max-height: 260px;
+      overflow-y: auto;
+    }
+
+    .team-card-player-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 0.82rem;
+    }
+    .team-card-player-row:last-child { border-bottom: none; }
+
+    .team-card-jersey {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      min-width: 22px;
+      text-align: right;
+    }
+    .team-card-player-name { flex: 1; }
+    .team-card-remove {
+      width: 20px; height: 20px;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: var(--transition);
+      flex-shrink: 0;
+    }
+    .team-card-remove:hover { background: rgba(239,68,68,0.12); color: var(--accent-red); border-color: rgba(239,68,68,0.3); }
+
+    .team-card-empty {
+      padding: 14px 16px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    .team-card-footer {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Player picker modal — two side-by-side panels */
+    #modal-player-picker .modal {
+      max-width: 700px;
+    }
+    .pick-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 580px) {
+      .pick-panels { grid-template-columns: 1fr; }
+      #modal-player-picker .modal { max-width: 100%; }
+    }
+
+    .pick-panel {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .pick-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-left: 4px solid var(--accent-blue);
+      background: rgba(255,255,255,0.03);
+    }
+    .pick-panel-title {
+      font-family: var(--font-display);
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+    }
+    .pick-panel-count {
+      font-size: 0.68rem;
+      color: var(--text-muted);
+    }
+
+    .pick-list {
+      max-height: 340px;
+      overflow-y: auto;
+    }
+
+    .pick-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      cursor: pointer;
+      transition: background 0.12s;
+      user-select: none;
+      font-size: 0.82rem;
+    }
+    .pick-row:last-child { border-bottom: none; }
+    .pick-row:hover    { background: var(--bg-card-hover); }
+    .pick-row.selected { background: rgba(59,130,246,0.1); }
+    .pick-row:focus-visible { outline: 4px solid var(--accent-live); outline-offset: 4px; box-shadow: 0 0 0 8px rgba(0, 255, 136, 0.25); }
+
+    .pick-checkbox {
+      width: 15px; height: 15px;
+      border-radius: 3px;
+      border: 1.5px solid var(--text-muted);
+      background: transparent;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: var(--transition);
+    }
+    .pick-row.selected .pick-checkbox {
+      background: var(--accent-blue);
+      border-color: var(--accent-blue);
+    }
+    .pick-checkbox::after {
+      content: '';
+      display: none;
+      width: 3px; height: 6px;
+      border: 2px solid #fff;
+      border-top: none; border-left: none;
+      transform: rotate(45deg) translate(-1px, -1px);
+    }
+    .pick-row.selected .pick-checkbox::after { display: block; }
+
+    .pick-jersey {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      min-width: 22px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .pick-name { flex: 1; }
+
+    .pick-select-all {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+      font-size: 0.7rem; font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.04em; text-transform: uppercase;
+      transition: background 0.12s;
+    }
+    .pick-select-all:hover { background: var(--bg-card-hover); }
+
+    /* Opponent import panel inside customise view */
+    #opp-import-panel {
+      display: none;
+      margin-top: 8px;
+    }
+
+    /* ============================================================
+       OVERLAY VIEW (View 4) — Fixed, draggable, always-on-top
+       ============================================================ */
+    #overlay {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 200; /* overlay-widget layer */
+      display: none;
+      width: 300px;
+      cursor: grab;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    #overlay.active { display: block; }
+    #overlay.dragging { cursor: grabbing; }
+    #overlay.popout {
+      position: static;
+      top: auto;
+      right: auto;
+      left: auto;
+      bottom: auto;
+      width: 100%;
+      max-width: none;
+      height: auto;
+      cursor: default;
+    }
+
+    .overlay-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(13,17,23, 0.95);
+      border: 1px solid var(--border);
+      border-radius: var(--radius) var(--radius) 0 0;
+      backdrop-filter: blur(12px);
+    }
+    .overlay-title {
+      font-family: var(--font-display);
+      font-size: 0.85rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent-live);
+    }
+    .overlay-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .overlay-btn {
+      width: 24px; height: 24px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition);
+    }
+    .overlay-btn:hover { background: var(--bg-card); color: var(--text-primary); }
+
+    .overlay-tables {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      overflow-y: auto;
+      max-height: 60vh;
+      backdrop-filter: blur(12px);
+      /* Fade gradient hint at bottom */
+      -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
+      mask-image: linear-gradient(to bottom, black calc(100% - 32px), transparent 100%);
+    }
+    #overlay.popout .overlay-tables {
+      max-height: calc(100vh - 84px);
+    }
+    /* When not scrollable, remove the fade */
+    .overlay-tables:not([data-scrollable="true"]) {
+      -webkit-mask-image: none;
+      mask-image: none;
+    }
+    #overlay.minimised .overlay-tables { display: none; }
+    /* Android TV: wide visible scrollbar on overlay */
+    #overlay .overlay-tables::-webkit-scrollbar { width: 10px; }
+    #overlay .overlay-tables::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 5px; }
+    #overlay .overlay-tables::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 5px; }
+    #overlay .overlay-tables::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
+
+    .overlay-team-table {
+      background: rgba(13,17,23, 0.92);
+    }
+    .overlay-team-table + .overlay-team-table {
+      border-top: 1px solid var(--border);
+    }
+
+    .overlay-team-name {
+      font-family: var(--font-display);
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-left: 4px solid var(--accent-blue);
+      background: rgba(255,255,255,0.03);
+    }
+
+    .overlay-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    .overlay-table th {
+      padding: 4px 8px;
+      text-align: left;
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+    }
+    .overlay-table th:last-child { text-align: right; }
+    .overlay-table td {
+      padding: 5px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      transition: background 0.3s ease;
+    }
+    .overlay-table tr:last-child td { border-bottom: none; }
+    .overlay-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 0.95rem; }
+
+    /* Score flash animations */
+    @keyframes flash-increase {
+      0%, 100% { background: transparent; }
+      30%       { background: rgba(0,255,136,0.25); }
+    }
+    @keyframes flash-decrease {
+      0%, 100% { background: transparent; }
+      30%       { background: rgba(239,68,68,0.25); }
+    }
+    .score-flash-up   { animation: flash-increase 1s ease; }
+    .score-flash-down { animation: flash-decrease 1s ease; }
+
+    /* ============================================================
+       TOAST NOTIFICATIONS
+       ============================================================ */
+    #toast-container {
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      z-index: 500; /* toasts layer — always topmost */
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: rgba(22,27,34,0.96);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent-live);
+      border-radius: var(--radius-sm);
+      backdrop-filter: blur(12px);
+      min-width: 240px;
+      max-width: 300px;
+      box-shadow: var(--shadow);
+      animation: toast-in 0.3s ease both, toast-out 0.3s ease 3.7s both;
+      pointer-events: auto;
+    }
+    @keyframes toast-in {
+      from { opacity: 0; transform: translateX(20px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes toast-out {
+      from { opacity: 1; transform: translateX(0); }
+      to   { opacity: 0; transform: translateX(20px); }
+    }
+
+    .toast.negative { border-left-color: var(--accent-red); }
+    .toast.neutral  { border-left-color: var(--accent-alert); }
+    .toast-icon { font-size: 1.2rem; margin-top: 1px; }
+    .toast-content { flex: 1; }
+    .toast-player { font-weight: 600; font-size: 0.85rem; }
+    .toast-action { font-size: 0.8rem; color: var(--text-muted); }
+    .toast-points {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      color: var(--accent-live);
+      align-self: center;
+    }
+    .toast-points.negative { color: var(--accent-red); }
+
+    /* ============================================================
+       GAME STATS TABLE — live player stats in game detail view
+       ============================================================ */
+    .stats-section-heading {
+      font-family: var(--font-display);
+      font-size: 1.1rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 10px 0 6px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .stats-team-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 10px 0 4px;
+      margin-top: 8px;
+    }
+    .stats-table-wrap {
+      overflow-x: auto;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+      min-width: 640px;
+    }
+    .stats-table th {
+      padding: 6px 8px;
+      text-align: right;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+      transition: color 0.15s;
+    }
+    .stats-table th:first-child { text-align: left; }
+    .stats-table th:hover { color: var(--text-primary); }
+    .stats-table th.sorted { color: var(--accent-live); }
+    .stats-table th .sort-arrow { margin-left: 3px; opacity: 0.7; }
+    .stats-table td {
+      padding: 5px 8px;
+      text-align: right;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      white-space: nowrap;
+    }
+    .stats-table td:first-child { text-align: left; font-weight: 500; }
+    .stats-table tr:last-child td { border-bottom: none; }
+    .stats-table tr:hover td { background: rgba(255,255,255,0.02); }
+    .stats-table .score-col { font-family: var(--font-display); font-size: 0.9rem; color: var(--accent-live); }
+
+    /* ============================================================
+       SETTINGS VIEW
+       ============================================================ */
+    .settings-section {
+      margin-bottom: 32px;
+    }
+    .settings-section-title {
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .danger-zone {
+      border-color: rgba(239,68,68,0.3);
+      padding: 20px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(239,68,68,0.2);
+      background: rgba(239,68,68,0.04);
+    }
+    .danger-zone .settings-section-title { color: var(--accent-red); }
+
+    /* ============================================================
+       LOADING SPINNER
+       ============================================================ */
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent-blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%       { transform: translateX(-6px); }
+      40%       { transform: translateX(5px); }
+      60%       { transform: translateX(-4px); }
+      80%       { transform: translateX(3px); }
+    }
+
+    .loading-state {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    /* ============================================================
+       UTILITY
+       ============================================================ */
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-between { justify-content: space-between; }
+    .gap-8 { gap: 8px; }
+    .gap-12 { gap: 12px; }
+    .gap-16 { gap: 16px; }
+    .mb-8 { margin-bottom: 8px; }
+    .mb-16 { margin-bottom: 16px; }
+    .mb-24 { margin-bottom: 24px; }
+    .text-muted { color: var(--text-muted); }
+    .text-sm { font-size: 0.85rem; }
+    .font-display { font-family: var(--font-display); }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px;
+      padding: 0; margin: -1px; overflow: hidden;
+      clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 24px 0;
+    }
+
+    /* ============================================================
+       ANDROID TV — D-pad nav enhancements
+       ============================================================ */
+    @media (min-width: 1920px) {
+      .game-card { min-height: 200px; }
+      .game-card:focus-visible {
+        outline: 4px solid var(--accent-live);
+        outline-offset: 4px;
+        box-shadow: 0 0 0 12px rgba(0, 255, 136, 0.25);
+      }
+      .btn { padding: 14px 28px; font-size: 1.1rem; }
+      .team-name { font-size: 2rem; }
+      .team-score { font-size: 2.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================
+     MOCK MODE BANNER (shown when ?mock=true)
+     ================================================================ -->
+<div id="mock-badge">🔧 MOCK DATA</div>
+
+<!-- ================================================================
+     APP SHELL
+     ================================================================ -->
+<div id="app">
+
+  <!-- ---- TOP HEADER ---- -->
+  <header id="header" role="banner">
+    <div class="header-logo" aria-label="FootyOverlay">
+      <span class="dot" aria-hidden="true"></span>
+      FOOTY<span style="color:var(--accent-blue)">OVERLAY</span>
+    </div>
+
+    <!-- Desktop top navigation -->
+    <nav id="top-nav" aria-label="Main navigation">
+      <button class="nav-tab active" data-view="watch" tabindex="0">
+         Watch
+      </button>
+      <button class="nav-tab" data-view="settings" tabindex="0">
+        Settings
+      </button>
+    </nav>
+
+    <div class="header-actions">
+      <!-- Overlay toggle button -->
+      <button class="btn btn-ghost btn-sm" id="overlay-toggle-btn" aria-label="Toggle overlay" style="display:none">
+        Overlay
+      </button>
+      <!-- User identity chip -->
+      <div id="user-menu-wrap" style="display:none">
+        <button id="user-chip" aria-label="Account menu" aria-haspopup="true" aria-expanded="false" tabindex="0">
+          <span class="user-initials" id="user-initials-badge"></span>
+          <span class="user-chip-text">
+            <span class="user-chip-name" id="user-chip-name"></span>
+            <span class="user-chip-email" id="user-chip-email"></span>
+          </span>
+          <span class="user-chip-caret" aria-hidden="true">▼</span>
+        </button>
+        <div id="user-dropdown" role="menu" aria-label="Account options">
+          <button class="dropdown-item" id="btn-switch-account" role="menuitem" tabindex="0">
+            ↩ Switch account
+          </button>
+          <button class="dropdown-item danger" id="btn-sign-out" role="menuitem" tabindex="0">
+            ⏏ Sign out
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ---- MAIN CONTENT ---- -->
+  <main id="main" role="main">
+
+    <!-- ============================================================
+         VIEW: WATCH (tab 1 — default)
+         ============================================================ -->
+    <section id="view-watch" class="view active" aria-label="Watch live games">
+
+      <!-- LIVE NOW section -->
+      <div class="section-heading">
+        LIVE NOW
+        <span class="live-pill" id="live-count-badge" aria-live="polite">0 LIVE</span>
+      </div>
+
+      <div id="live-games-row" class="games-scroll-row" role="list" aria-label="Live games">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          Loading live games...
+        </div>
+      </div>
+
+      <!-- UPCOMING section -->
+      <div class="section-heading">UPCOMING — <span id="upcoming-round-label" style="color:var(--text-muted)">Round ...</span></div>
+
+      <div id="upcoming-games-grid" class="games-grid" role="list" aria-label="Upcoming games">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          Loading fixtures...
+        </div>
+      </div>
+
+      <!-- RECENT (past games) section -->
+      <div class="section-heading" id="recent-section-heading" style="display:none">
+        RECENT
+      </div>
+
+      <div id="past-games-grid" class="games-grid" role="list" aria-label="Past games">
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: GAME DETAIL (view 2 — opened by clicking a game card)
+         ============================================================ -->
+    <section id="view-game-detail" class="view" aria-label="Game detail">
+
+      <div class="game-detail-header">
+        <button class="back-btn" id="game-detail-back" aria-label="Go back to watch tab">
+          ← Back
+        </button>
+        <div class="game-detail-title">
+          <div class="game-detail-matchup" id="detail-matchup">Team A vs Team B</div>
+          <div class="game-detail-live-score" id="detail-live-score"></div>
+        </div>
+        <div id="detail-status-badge"></div>
+      </div>
+
+      <!-- Action buttons -->
+      <div class="game-detail-actions">
+        <button class="btn btn-primary btn-lg" id="btn-customise-players" tabindex="0">
+          Customise Players
+        </button>
+        <button class="btn btn-live btn-lg" id="btn-begin-overlay" tabindex="0">
+          Begin Overlay
+        </button>
+      </div>
+
+      <!-- Game stats — populated by renderGameStats() -->
+      <div class="glass-card" id="game-stats-card">
+        <div class="section-heading" style="font-size:1.2rem;margin-bottom:12px">
+          Player Scores
+        </div>
+        <div id="game-stats-content" class="text-muted text-sm">
+          Select a game to see player scores.
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================================================
+         VIEW: CUSTOMISE PLAYERS (view 3) — team card system
+         ============================================================ -->
+    <section id="view-customise" class="view" aria-label="Customise fantasy teams">
+
+      <!-- Top toolbar -->
+      <div class="flex items-center justify-between mb-24">
+        <button class="back-btn" id="customise-back" aria-label="Return to game detail">← Back</button>
+        <h1 class="section-heading" style="margin-bottom:0">Customise Players</h1>
+        <button class="btn btn-danger btn-sm" id="btn-scoreboard-mode" tabindex="0">
+          Full Scoreboard
+        </button>
+      </div>
+
+      <!-- Team cards (injected by renderTeamCards()) -->
+      <div class="team-cards-wrap" id="team-cards-wrap">
+        <!-- Injected by JS -->
+      </div>
+
+      <!-- Add team button -->
+      <div class="flex items-center gap-12 mb-24">
+        <button class="btn btn-ghost btn-sm" id="btn-add-custom-team" tabindex="0">+ Add Team</button>
+        <span id="team-card-count-label" class="text-muted text-sm"></span>
+      </div>
+
+      <div class="divider"></div>
+
+      <button class="btn btn-primary btn-lg" id="btn-save-customise" tabindex="0">
+        ✅ Save &amp; Return to Game
+      </button>
+
+    </section>
+
+
+    <!-- ============================================================
+         VIEW: SETTINGS (tab 3)
+         ============================================================ -->
+    <section id="view-settings" class="view" aria-label="Settings">
+
+      <h1 class="section-heading mb-24">Settings</h1>
+
+      <!-- Scoring system -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Scoring System</div>
+        <div class="radio-group">
+          <div class="radio-option">
+            <input type="radio" name="scoring-system" id="scoring-afl" value="afl_fantasy" />
+            <label for="scoring-afl" class="logo-label" tabindex="0">🏆 AFL Fantasy</label>
+          </div>
+          <div class="radio-option">
+            <input type="radio" name="scoring-system" id="scoring-sc" value="supercoach" />
+            <label for="scoring-sc" class="logo-label" tabindex="0">🧠 SuperCoach</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Overlay settings -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Overlay</div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Overlay Position</div>
+          </div>
+          <select id="setting-position" aria-label="Overlay position">
+            <option value="top-right">Top Right</option>
+            <option value="top-left">Top Left</option>
+            <option value="bottom-right">Bottom Right</option>
+            <option value="bottom-left">Bottom Left</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Notifications -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Notifications</div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Toaster Notifications</div>
+            <div class="toggle-desc">Pop-up alerts for scoring actions</div>
+          </div>
+          <label class="toggle" aria-label="Enable toaster notifications" tabindex="0">
+            <input type="checkbox" id="setting-toasts" checked />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Notification Sound</div>
+          </div>
+          <label class="toggle" aria-label="Enable notification sound" tabindex="0">
+            <input type="checkbox" id="setting-sound" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+
+        <div class="toggle-row" id="sound-volume-row" style="display:none">
+          <div class="toggle-label">Volume</div>
+          <div style="display:flex;align-items:center;gap:8px;min-width:160px">
+            <input type="range" id="setting-volume" min="0" max="100" value="60"
+                   aria-label="Notification volume" style="width:120px" />
+            <span id="volume-value" style="font-size:0.8rem;color:var(--text-muted);min-width:36px">60%</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data polling -->
+      <div class="settings-section glass-card" style="margin-bottom:20px">
+        <div class="settings-section-title">Data</div>
+
+        <div class="toggle-row">
+          <div> 
+            <div class="toggle-label">Live Poll Interval</div>
+            <div class="toggle-desc">How often to refresh live game data</div>
+          </div>
+          <select id="setting-poll-interval" aria-label="Poll interval for live games">
+            <option value="15">Every 15 seconds</option>
+            <option value="30" selected>Every 30 seconds</option>
+            <option value="60">Every 60 seconds</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Danger zone -->
+      <div class="settings-section danger-zone">
+        <div class="settings-section-title">Danger Zone</div>
+        <p class="text-sm text-muted mb-16">This will delete all locally stored data for your account — teams, settings, and preferences. This cannot be undone.</p>
+        <button class="btn btn-danger" id="btn-clear-data" tabindex="0">
+          Clear All Data
+        </button>
+      </div>
+
+    </section>
+
+  </main><!-- /#main -->
+
+  <!-- ---- MOBILE BOTTOM NAV ---- -->
+  <nav id="bottom-nav" aria-label="Mobile navigation">
+    <button class="bottom-tab active" data-view="watch" tabindex="0">
+      <span class="tab-icon" aria-hidden="true">👁</span>
+      <span>Watch</span>
+    </button>
+    <button class="bottom-tab" data-view="settings" tabindex="0">
+      <span>Settings</span>
+    </button>
+  </nav>
+
+</div><!-- /#app -->
+
+<!-- ================================================================
+     OVERLAY — Lives outside view stack, always rendered
+     ================================================================ -->
+<div id="overlay" role="region" aria-label="Live fantasy scores overlay">
+
+  <div class="overlay-header" id="overlay-drag-handle">
+    <span class="overlay-title">LIVE SCORES</span>
+    <div class="overlay-controls">
+      <button class="overlay-btn" id="overlay-popout-btn" aria-label="Pop out overlay" title="Pop out overlay">⧉</button>
+      <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
+      <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
+    </div>
+  </div>
+
+  <!-- Score tables (injected by JS) -->
+  <div class="overlay-tables" id="overlay-tables-wrap">
+    <!-- Injected by renderOverlayTables() -->
+  </div>
+
+</div>
+
+<!-- ================================================================
+     TOAST CONTAINER
+     ================================================================ -->
+<div id="toast-container" aria-live="polite" aria-atomic="false" role="log"></div>
+
+<!-- ================================================================
+     LOGIN SCREEN — shown on first load or after switch/sign-out
+     ================================================================ -->
+<div id="login-screen" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  <div class="login-card">
+
+    <div class="login-logo" id="login-title">
+      <span class="dot" style="width:10px;height:10px;border-radius:50%;background:var(--accent-live);box-shadow:0 0 10px var(--accent-live);display:inline-block;" aria-hidden="true"></span>
+      FOOTY<span style="color:var(--accent-blue)">OVERLAY</span>
+    </div>
+    <p class="login-tagline">Live AFL Fantasy &amp; SuperCoach scoring overlay</p>
+
+    <div class="form-group">
+      <label for="login-email">Email address</label>
+      <input type="email" id="login-email" placeholder="you@example.com"
+             autocomplete="email" spellcheck="false" tabindex="0" />
+    </div>
+
+    <div class="form-group">
+      <label for="login-name">Display name</label>
+      <input type="text" id="login-name" placeholder="e.g. Lachlan" maxlength="30"
+             autocomplete="given-name" tabindex="0" />
+    </div>
+
+    <button class="btn btn-primary btn-lg" id="btn-login" tabindex="0" style="width:100%">
+      Let's go →
+    </button>
+
+    <p class="login-footer-note">
+      No password needed — your settings are saved locally to this device
+      and restored whenever you use the same email.
+    </p>
+
+  </div>
+</div>
+<div class="modal-backdrop" id="modal-confirm" role="dialog" aria-modal="true" aria-labelledby="modal-confirm-title">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-confirm-title">Confirm</span>
+      <button class="modal-close" data-modal="modal-confirm" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="modal-confirm-message">Are you sure?</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" data-modal="modal-confirm">Cancel</button>
+      <button class="btn btn-danger" id="modal-confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+
+
+<!-- Player picker modal — opened by "+ Add Players" on each team card -->
+<div class="modal-backdrop" id="modal-player-picker" role="dialog" aria-modal="true" aria-labelledby="modal-picker-title">
+  <div class="modal" style="max-width:700px;">
+    <div class="modal-header">
+      <span class="modal-title" id="modal-picker-title">Add Players</span>
+      <button class="modal-close" id="modal-picker-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px;">
+      <!-- Two side-by-side team panels — injected by openPlayerPicker() -->
+      <div class="pick-panels" id="picker-panels-wrap"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="modal-picker-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-picker-confirm">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================
+     JAVASCRIPT
+     ================================================================ -->
+<script>
+'use strict';
+
+/* ================================================================
+   CONSTANTS — SCORING SYSTEMS
+   ⚠️  Score calculation is intentionally unused — scores are sourced
+   directly from FanFooty's pre-calculated DT and SC columns.
+   These constants are kept for reference only and may be useful
+   if a manual calculation fallback is ever needed.
+   ================================================================ */
+
+/** @type {Object} AFL Fantasy point values per action (reference only — not used for calculation) */
+const AFL_FANTASY_POINTS = {
+  goal:         6,
+  behind:       1,
+  mark:         3,
+  handball:     2,
+  kick:         3,
+  tackle:       4,
+  hb_clanger:  -3,
+  kick_clanger:-3,
+  free_for:     1,
+  free_against:-3,
+};
+
+/** @type {Object} SuperCoach point values per action */
+const SUPERCOACH_POINTS = {
+  goal:         8,
+  behind:       0.4,
+  mark:         4,
+  handball:     1,
+  kick:         3,
+  tackle:       4,
+  hb_clanger:  -4,
+  kick_clanger:-4,
+  free_for:     1,
+  free_against:-3,
+};
+
+/** @type {string[]} Emoji options for profile avatars — REMOVED (email login) */
+
+/**
+ * JERSEY_FALLBACK — Hardcoded jersey numbers for the most common AFL fantasy players.
+ *
+ * ⚠️  NEEDS ANNUAL UPDATE: Jersey numbers change when players switch clubs or
+ *     new squad lists are issued pre-season. Review and update this map each year
+ *     before Round 1. Source: each club's official squad list on afl.com.au.
+ *
+ * This is only consulted when the jersey-lookup Netlify function is unavailable.
+ * The live function scrapes current squad data and takes precedence.
+ *
+ * Format: 'Full Player Name': { jersey: N, team: 'Club Name' }
+ */
+const JERSEY_FALLBACK = {
+  // ── Geelong ──────────────────────────────────────────────
+  'P. Dangerfield':    { jersey: 35, team: 'Geelong' },
+  'T. Hawkins':            { jersey: 26, team: 'Geelong' },
+  'J. Cameron':         { jersey: 5,  team: 'Geelong' },
+  'M. Blicavs':           { jersey: 22, team: 'Geelong' },
+  'I. Smith':            { jersey: 8,  team: 'Geelong' },
+  'M. Duncan':           { jersey: 22, team: 'Geelong' },
+  'T. Stengle':          { jersey: 2,  team: 'Geelong' },
+  // ── Western Bulldogs ─────────────────────────────────────
+  'M. Bontempelli':     { jersey: 4,  team: 'Western Bulldogs' },
+  'A. Treloar':           { jersey: 8,  team: 'Western Bulldogs' },
+  'B. Smith':           { jersey: 9,  team: 'Western Bulldogs' },
+  'T. Liberatore':         { jersey: 7,  team: 'Western Bulldogs' },
+  'C. Weightman':         { jersey: 27, team: 'Western Bulldogs' },
+  // ── Brisbane Lions ───────────────────────────────────────
+  'L. Neale':          { jersey: 6,  team: 'Brisbane Lions' },
+  'Z. Bailey':             { jersey: 2,  team: 'Brisbane Lions' },
+  'J. Daniher':            { jersey: 5,  team: 'Brisbane Lions' },
+  'C. Cameron':        { jersey: 7,  team: 'Brisbane Lions' },
+  'D. Zorko':            { jersey: 9,  team: 'Brisbane Lions' },
+  'L. McCarthy':       { jersey: 3,  team: 'Brisbane Lions' },
+  // ── Melbourne ────────────────────────────────────────────
+  'C. Oliver':         { jersey: 13, team: 'Melbourne' },
+  'C. Petracca':     { jersey: 5,  team: 'Melbourne' },
+  'M. Gawn':               { jersey: 11, team: 'Melbourne' },
+  'J. Viney':             { jersey: 7,  team: 'Melbourne' },
+  'B. Fritsch':         { jersey: 12, team: 'Melbourne' },
+  'S. May':             { jersey: 44, team: 'Melbourne' },
+  'J. Melksham':          { jersey: 18, team: 'Melbourne' },
+  // ── Collingwood ──────────────────────────────────────────
+  'N. Daicos':            { jersey: 35, team: 'Collingwood' },
+  'S. Pendlebury':       { jersey: 10, team: 'Collingwood' },
+  'J. De Goey':         { jersey: 5,  team: 'Collingwood' },
+  'D. Moore':            { jersey: 2,  team: 'Collingwood' },
+  'B. Maynard':        { jersey: 21, team: 'Collingwood' },
+  'M. Cox':              { jersey: 49, team: 'Collingwood' },
+  // ── Richmond ─────────────────────────────────────────────
+  'D. Martin':          { jersey: 4,  team: 'Richmond' },
+  'S. Bolton':            { jersey: 12, team: 'Richmond' },
+  'J. Riewoldt':          { jersey: 8,  team: 'Richmond' },
+  'T. Cotchin':          { jersey: 9,  team: 'Richmond' },
+  'N. Vlastuin':          { jersey: 22, team: 'Richmond' },
+  'T. Lynch':              { jersey: 4,  team: 'Richmond' },
+  // ── Carlton ──────────────────────────────────────────────
+  'P. Cripps':         { jersey: 9,  team: 'Carlton' },
+  'H. McKay':            { jersey: 1,  team: 'Carlton' },
+  'S. Walsh':              { jersey: 8,  team: 'Carlton' },
+  'D. Cuningham':        { jersey: 25, team: 'Carlton' },
+  'Z. Williams':           { jersey: 22, team: 'Carlton' },
+  // ── Hawthorn ─────────────────────────────────────────────
+  'J. Sicily':           { jersey: 8,  team: 'Hawthorn' },
+  'J. Newcombe':           { jersey: 12, team: 'Hawthorn' },
+  'D. Moore':            { jersey: 15, team: 'Hawthorn' },
+  'M. Lewis':            { jersey: 26, team: 'Hawthorn' },
+  'F. Maginness':         { jersey: 33, team: 'Hawthorn' },
+  // ── Essendon ─────────────────────────────────────────────
+  'D. Parish':           { jersey: 7,  team: 'Essendon' },
+  'J. Ridley':          { jersey: 11, team: 'Essendon' },
+  'J. Stringer':          { jersey: 4,  team: 'Essendon' },
+  'K. Langford':          { jersey: 12, team: 'Essendon' },
+  'P. Wright':           { jersey: 20, team: 'Essendon' },
+  // ── Sydney Swans ─────────────────────────────────────────
+  'C. Mills':           { jersey: 14, team: 'Sydney' },
+  'C. Warner':            { jersey: 31, team: 'Sydney' },
+  'L. Franklin':         { jersey: 23, team: 'Sydney' },
+  'T. Papley':             { jersey: 11, team: 'Sydney' },
+  'I. Heeney':           { jersey: 5,  team: 'Sydney' },
+  'E. Gulden':           { jersey: 10, team: 'Sydney' },
+  // ── GWS Giants ───────────────────────────────────────────
+  'T. Greene':            { jersey: 4,  team: 'GWS Giants' },
+  'L. Whitfield':       { jersey: 6,  team: 'GWS Giants' },
+  'J. Hogan':            { jersey: 17, team: 'GWS Giants' },
+  'J. Hopper':           { jersey: 3,  team: 'GWS Giants' },
+  // ── Adelaide Crows ───────────────────────────────────────
+  'R. Laird':             { jersey: 22, team: 'Adelaide' },
+  'T. Walker':          { jersey: 13, team: 'Adelaide' },
+  'B. Keays':              { jersey: 28, team: 'Adelaide' },
+  'J. Dawson':          { jersey: 3,  team: 'Adelaide' },
+  'I. Rankine':           { jersey: 2,  team: 'Adelaide' },
+  // ── Port Adelaide ────────────────────────────────────────
+  'T. Boak':            { jersey: 5,  team: 'Port Adelaide' },
+  'C. Rozee':           { jersey: 9,  team: 'Port Adelaide' },
+  'Z. Butters':            { jersey: 6,  team: 'Port Adelaide' },
+  'O. Wines':            { jersey: 23, team: 'Port Adelaide' },
+  'C. Dixon':          { jersey: 17, team: 'Port Adelaide' },
+  // ── Fremantle ────────────────────────────────────────────
+  'N. Fyfe':               { jersey: 6,  team: 'Fremantle' },
+  'A. Brayshaw':        { jersey: 15, team: 'Fremantle' },
+  'C. Serong':           { jersey: 28, team: 'Fremantle' },
+  'M. Walters':        { jersey: 9,  team: 'Fremantle' },
+  'J. Treacy':            { jersey: 5,  team: 'Fremantle' },
+  // ── West Coast Eagles ────────────────────────────────────
+  'T. Kelly':              { jersey: 4,  team: 'West Coast' },
+  'E. Yeo':             { jersey: 15, team: 'West Coast' },
+  'J. Cripps':           { jersey: 9,  team: 'West Coast' },
+  'O. Allen':            { jersey: 17, team: 'West Coast' },
+  // ── North Melbourne ──────────────────────────────────────
+  'J. Horne-Francis':    { jersey: 1,  team: 'North Melbourne' },
+  'L. Davies-Uniacke':    { jersey: 6,  team: 'North Melbourne' },
+  'J. Simpkin':             { jersey: 5,  team: 'North Melbourne' },
+  'N. Larkey':            { jersey: 9,  team: 'North Melbourne' },
+  // ── Gold Coast Suns ──────────────────────────────────────
+  'T. Miller':            { jersey: 4,  team: 'Gold Coast' },
+  'N. Anderson':          { jersey: 6,  team: 'Gold Coast' },
+  'M. Rowell':            { jersey: 18, team: 'Gold Coast' },
+  'B. King':               { jersey: 7,  team: 'Gold Coast' },
+  // ── St Kilda ─────────────────────────────────────────────
+  'J. Steele':            { jersey: 4,  team: 'St Kilda' },
+  'M. King':               { jersey: 7,  team: 'St Kilda' },
+  'J. Gresham':           { jersey: 6,  team: 'St Kilda' },
+  'H. Clark':           { jersey: 12, team: 'St Kilda' },
+};
+
+/* ================================================================
+   MOCK DATA
+   Used when ?mock=true is in the URL, or when fetch fails in dev.
+   All UI components should be demonstrable using this data alone.
+   ================================================================ */
+const MOCK_DATA = {
+  round: 14,
+  liveGames: [
+    {
+      id: 'g001',
+      teamA: { name: 'Richmond', abbr: 'RICH', color: '#ffd700', score: 72, goals: 10, behinds: 12 },
+      teamB: { name: 'Collingwood', abbr: 'COLL', color: '#000000', score: 61, goals: 8, behinds: 13 },
+      quarter: 3,
+      timeRemaining: '8:42',
+      venue: 'MCG',
+      status: 'live',
+      players: [
+        // ── Richmond (teamA) — 23-man match day squad ────────────────────
+        { id: 'rich01', jersey: 4,  name: 'D. Martin', score: 88,  scoreDT: 88,  scoreSC: 91  , stats: { kk: 18, hb: 10, mk: 6, tk: 5, ho: 0, fk: 1, gb: '2.1', mg: 48, cp: 8, cl: 3, effPct: 88, togPct: 76 }  },
+        { id: 'rich02', jersey: 12, name: 'S. Bolton', score: 54,  scoreDT: 54,  scoreSC: 49  , stats: { kk: 12, hb: 7, mk: 4, tk: 3, ho: 0, fk: 0, gb: '1.2', mg: 32, cp: 5, cl: 1, effPct: 85, togPct: 72 }  },
+        { id: 'rich03', jersey: 8,  name: 'J. Riewoldt', score: 62,  scoreDT: 62,  scoreSC: 68  , stats: { kk: 10, hb: 4, mk: 5, tk: 2, ho: 0, fk: 2, gb: '3.0', mg: 38, cp: 3, cl: 0, effPct: 82, togPct: 65 }  },
+        { id: 'rich04', jersey: 7,  name: 'T. Cotchin', score: 71,  scoreDT: 71,  scoreSC: 75  , stats: { kk: 15, hb: 14, mk: 5, tk: 8, ho: 0, fk: 1, gb: '0.1', mg: 41, cp: 9, cl: 4, effPct: 83, togPct: 78 }  },
+        { id: 'rich05', jersey: 22, name: 'N. Vlastuin', score: 49,  scoreDT: 49,  scoreSC: 44  , stats: { kk: 8, hb: 5, mk: 3, tk: 4, ho: 0, fk: 1, gb: '0.1', mg: 29, cp: 6, cl: 1, effPct: 77, togPct: 70 }  },
+        { id: 'rich06', jersey: 13, name: 'T. Lynch', score: 58,  scoreDT: 58,  scoreSC: 62  , stats: { kk: 9, hb: 4, mk: 4, tk: 3, ho: 0, fk: 0, gb: '1.2', mg: 35, cp: 5, cl: 1, effPct: 82, togPct: 68 }  },
+        { id: 'rich07', jersey: 6,  name: 'D. Rioli', score: 41,  scoreDT: 41,  scoreSC: 37  , stats: { kk: 8, hb: 6, mk: 3, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 28, cp: 4, cl: 1, effPct: 80, togPct: 72 }  },
+        { id: 'rich08', jersey: 11, name: 'K. McIntosh', score: 33,  scoreDT: 33,  scoreSC: 30  , stats: { kk: 6, hb: 4, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 73, togPct: 65 }  },
+        { id: 'rich09', jersey: 9,  name: 'D. Prestia', score: 67,  scoreDT: 67,  scoreSC: 70  , stats: { kk: 12, hb: 11, mk: 4, tk: 6, ho: 0, fk: 0, gb: '0.1', mg: 36, cp: 7, cl: 3, effPct: 85, togPct: 74 }  },
+        { id: 'rich10', jersey: 23, name: 'M. Pickett', score: 45,  scoreDT: 45,  scoreSC: 42  , stats: { kk: 7, hb: 5, mk: 3, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 25, cp: 5, cl: 1, effPct: 78, togPct: 68 }  },
+        { id: 'rich11', jersey: 3,  name: 'B. Baker', score: 38,  scoreDT: 38,  scoreSC: 35  , stats: { kk: 5, hb: 4, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 18, cp: 4, cl: 1, effPct: 72, togPct: 60 }  },
+        { id: 'rich12', jersey: 18, name: 'L. Baker', score: 52,  scoreDT: 52,  scoreSC: 55  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.1', mg: 26, cp: 5, cl: 2, effPct: 79, togPct: 70 }  },
+        { id: 'rich13', jersey: 15, name: 'H. Ralphsmith', score: 29,  scoreDT: 29,  scoreSC: 26  , stats: { kk: 5, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 20, cp: 3, cl: 0, effPct: 75, togPct: 65 }  },
+        { id: 'rich14', jersey: 21, name: 'R. Mansell', score: 44,  scoreDT: 44,  scoreSC: 41  , stats: { kk: 8, hb: 7, mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 28, cp: 5, cl: 2, effPct: 80, togPct: 70 }  },
+        { id: 'rich15', jersey: 32, name: 'T. Nankervis', score: 61,  scoreDT: 61,  scoreSC: 66  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 14, fk: 0, gb: '0.0', mg: 15, cp: 6, cl: 3, effPct: 82, togPct: 64 }  },
+        { id: 'rich16', jersey: 16, name: 'J. Graham', score: 36,  scoreDT: 36,  scoreSC: 32  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 18, cp: 3, cl: 1, effPct: 75, togPct: 62 }  },
+        { id: 'rich17', jersey: 2,  name: 'D. Grimes', score: 55,  scoreDT: 55,  scoreSC: 58  , stats: { kk: 7, hb: 5, mk: 3, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 }  },
+        { id: 'rich18', jersey: 26, name: 'W. Broadbent', score: 31,  scoreDT: 31,  scoreSC: 28  , stats: { kk: 5, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 72, togPct: 60 }  },
+        { id: 'rich19', jersey: 37, name: 'J. Ross', score: 48,  scoreDT: 48,  scoreSC: 45  , stats: { kk: 8, hb: 6, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.1', mg: 26, cp: 4, cl: 1, effPct: 80, togPct: 68 }  },
+        { id: 'rich20', jersey: 29, name: 'M. Parker', score: 22,  scoreDT: 22,  scoreSC: 19  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 60 }  },
+        { id: 'rich21', jersey: 44, name: 'I. Cumberland', score: 27,  scoreDT: 27,  scoreSC: 24  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 14, cp: 2, cl: 0, effPct: 70, togPct: 58 }  },
+        { id: 'rich22', jersey: 5,  name: 'M. Buntine', score: 19,  scoreDT: 19,  scoreSC: 17  , stats: { kk: 4, hb: 3, mk: 1, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 55 }  },
+        { id: 'rich23', jersey: 35, name: 'J. Koschitzke', score: 15,  scoreDT: 15,  scoreSC: 13  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 10, cp: 2, cl: 0, effPct: 68, togPct: 52 }  },
+        // ── Collingwood (teamB) — 23-man match day squad ──────────────────
+        { id: 'coll01', jersey: 14, name: 'S. Pendlebury', score: 102, scoreDT: 102, scoreSC: 109 , stats: { kk: 22, hb: 15, mk: 9, tk: 6, ho: 0, fk: 3, gb: '1.2', mg: 60, cp: 8, cl: 3, effPct: 90, togPct: 82 }  },
+        { id: 'coll02', jersey: 10, name: 'D. Moore', score: 58,  scoreDT: 58,  scoreSC: 55  , stats: { kk: 8, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 1, effPct: 77, togPct: 68 }  },
+        { id: 'coll03', jersey: 5,  name: 'J. De Goey', score: 76,  scoreDT: 76,  scoreSC: 72  , stats: { kk: 10, hb: 6, mk: 4, tk: 3, ho: 0, fk: 1, gb: '2.1', mg: 36, cp: 5, cl: 1, effPct: 83, togPct: 74 }  },
+        { id: 'coll04', jersey: 21, name: 'B. Maynard', score: 44,  scoreDT: 44,  scoreSC: 41  , stats: { kk: 6, hb: 4, mk: 2, tk: 3, ho: 0, fk: 1, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 65 }  },
+        { id: 'coll05', jersey: 35, name: 'N. Daicos', score: 118, scoreDT: 118, scoreSC: 124 , stats: { kk: 25, hb: 18, mk: 11, tk: 7, ho: 0, fk: 2, gb: '2.1', mg: 68, cp: 10, cl: 4, effPct: 92, togPct: 84 }  },
+        { id: 'coll06', jersey: 2,  name: 'D. Moore (CB)', score: 47,  scoreDT: 47,  scoreSC: 44  , stats: { kk: 7, hb: 5, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 5, cl: 1, effPct: 75, togPct: 65 }  },
+        { id: 'coll07', jersey: 49, name: 'M. Cox', score: 54,  scoreDT: 54,  scoreSC: 59  , stats: { kk: 5, hb: 3, mk: 2, tk: 2, ho: 18, fk: 0, gb: '0.1', mg: 16, cp: 6, cl: 3, effPct: 80, togPct: 62 }  },
+        { id: 'coll08', jersey: 17, name: 'C. Brown', score: 38,  scoreDT: 38,  scoreSC: 35  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 18, cp: 3, cl: 0, effPct: 75, togPct: 62 }  },
+        { id: 'coll09', jersey: 6,  name: 'J. Crisp', score: 83,  scoreDT: 83,  scoreSC: 88  , stats: { kk: 14, hb: 12, mk: 6, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 40, cp: 7, cl: 4, effPct: 85, togPct: 76 }  },
+        { id: 'coll10', jersey: 11, name: 'T. Adams', score: 65,  scoreDT: 65,  scoreSC: 68  , stats: { kk: 11, hb: 9, mk: 5, tk: 5, ho: 0, fk: 1, gb: '0.0', mg: 34, cp: 7, cl: 3, effPct: 84, togPct: 74 }  },
+        { id: 'coll11', jersey: 9,  name: 'B. Mihocek', score: 43,  scoreDT: 43,  scoreSC: 40  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '1.1', mg: 24, cp: 4, cl: 1, effPct: 80, togPct: 68 }  },
+        { id: 'coll12', jersey: 37, name: 'N. Murphy', score: 29,  scoreDT: 29,  scoreSC: 26  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
+        { id: 'coll13', jersey: 18, name: 'T. Bianco', score: 34,  scoreDT: 34,  scoreSC: 31  , stats: { kk: 7, hb: 5, mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 78, togPct: 66 }  },
+        { id: 'coll14', jersey: 22, name: 'J. Elliott', score: 52,  scoreDT: 52,  scoreSC: 48  , stats: { kk: 8, hb: 5, mk: 3, tk: 2, ho: 0, fk: 0, gb: '1.1', mg: 26, cp: 4, cl: 1, effPct: 80, togPct: 68 }  },
+        { id: 'coll15', jersey: 26, name: 'I. Quaynor', score: 39,  scoreDT: 39,  scoreSC: 36  , stats: { kk: 6, hb: 4, mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 76, togPct: 66 }  },
+        { id: 'coll16', jersey: 44, name: 'O. Henry', score: 28,  scoreDT: 28,  scoreSC: 25  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 14, cp: 3, cl: 0, effPct: 72, togPct: 60 }  },
+        { id: 'coll17', jersey: 3,  name: 'F. Macrae', score: 78,  scoreDT: 78,  scoreSC: 82  , stats: { kk: 12, hb: 10, mk: 5, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 36, cp: 6, cl: 2, effPct: 84, togPct: 74 }  },
+        { id: 'coll18', jersey: 15, name: 'D. Cameron', score: 33,  scoreDT: 33,  scoreSC: 30  , stats: { kk: 5, hb: 4, mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 1, effPct: 73, togPct: 62 }  },
+        { id: 'coll19', jersey: 31, name: 'P. Lipinski', score: 47,  scoreDT: 47,  scoreSC: 50  , stats: { kk: 8, hb: 6, mk: 3, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 26, cp: 5, cl: 2, effPct: 80, togPct: 68 }  },
+        { id: 'coll20', jersey: 23, name: 'W. Kelly', score: 22,  scoreDT: 22,  scoreSC: 19  , stats: { kk: 4, hb: 3, mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.0', mg: 14, cp: 2, cl: 0, effPct: 72, togPct: 58 }  },
+        { id: 'coll21', jersey: 19, name: 'L. Schultz', score: 18,  scoreDT: 18,  scoreSC: 16  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.0', mg: 10, cp: 2, cl: 0, effPct: 68, togPct: 52 }  },
+        { id: 'coll22', jersey: 28, name: 'B. Frampton', score: 24,  scoreDT: 24,  scoreSC: 21  , stats: { kk: 4, hb: 3, mk: 1, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 12, cp: 2, cl: 0, effPct: 70, togPct: 55 }  },
+        { id: 'coll23', jersey: 42, name: 'C. Holman', score: 12,  scoreDT: 12,  scoreSC: 10  , stats: { kk: 3, hb: 2, mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 8, cp: 1, cl: 0, effPct: 65, togPct: 50 }  },
+      ]
+    },
+  ],
+  pastGames: [
+    {
+      id: 'g002',
+      teamA: { name: 'Carlton', abbr: 'CARL', color: '#003087', score: 92, goals: 14, behinds: 8 },
+      teamB: { name: 'Hawthorn', abbr: 'HAW', color: '#4d2004', score: 72, goals: 11, behinds: 6 },
+      quarter: 4,
+      venue: 'Marvel Stadium',
+      status: 'final',
+      players: [
+        // ── Carlton (teamA) ─────────────────────────────────────────────────
+        { id: 'carl01', jersey: 9,  name: 'P. Cripps', score: 118, scoreDT: 118, scoreSC: 125, stats: { kk: 22, hb: 14, mk: 9, tk: 7, ho: 0, fk: 2, gb: '2.1', mg: 65, cp: 10, cl: 4, effPct: 89, togPct: 84 } },
+        { id: 'carl02', jersey: 1,  name: 'H. McKay', score: 67,  scoreDT: 67,  scoreSC: 61,  stats: { kk: 11, hb: 4,  mk: 6, tk: 2, ho: 0, fk: 2, gb: '5.1', mg: 42, cp: 4, cl: 0, effPct: 83, togPct: 72 } },
+        { id: 'carl03', jersey: 8,  name: 'S. Walsh', score: 98,  scoreDT: 98,  scoreSC: 104, stats: { kk: 18, hb: 14, mk: 7, tk: 6, ho: 0, fk: 1, gb: '0.2', mg: 54, cp: 9, cl: 4, effPct: 87, togPct: 80 } },
+        { id: 'carl04', jersey: 7,  name: 'M. Kennedy', score: 76,  scoreDT: 76,  scoreSC: 81,  stats: { kk: 14, hb: 10, mk: 5, tk: 5, ho: 0, fk: 1, gb: '1.1', mg: 44, cp: 8, cl: 3, effPct: 85, togPct: 78 } },
+        { id: 'carl05', jersey: 22, name: 'Z. Williams', score: 61,  scoreDT: 61,  scoreSC: 65,  stats: { kk: 10, hb: 7,  mk: 4, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 32, cp: 6, cl: 1, effPct: 80, togPct: 72 } },
+        { id: 'carl06', jersey: 33, name: 'C. Hollands', score: 52,  scoreDT: 52,  scoreSC: 55,  stats: { kk: 9,  hb: 7,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 30, cp: 6, cl: 2, effPct: 82, togPct: 72 } },
+        { id: 'carl07', jersey: 11, name: 'J. Motlop', score: 44,  scoreDT: 44,  scoreSC: 40,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '2.0', mg: 26, cp: 4, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'carl08', jersey: 5,  name: 'M. Owies', score: 38,  scoreDT: 38,  scoreSC: 34,  stats: { kk: 6,  hb: 4,  mk: 3, tk: 2, ho: 0, fk: 0, gb: '2.0', mg: 20, cp: 3, cl: 0, effPct: 75, togPct: 65 } },
+        { id: 'carl09', jersey: 18, name: 'B. Silvagni', score: 58,  scoreDT: 58,  scoreSC: 62,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 28, cp: 5, cl: 1, effPct: 80, togPct: 70 } },
+        { id: 'carl10', jersey: 2,  name: 'L. Young', score: 49,  scoreDT: 49,  scoreSC: 53,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 5, cl: 1, effPct: 77, togPct: 68 } },
+        { id: 'carl11', jersey: 14, name: 'A. Cincotta', score: 40,  scoreDT: 40,  scoreSC: 37,  stats: { kk: 7,  hb: 4,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 65 } },
+        { id: 'carl12', jersey: 32, name: 'T. De Koning', score: 88,  scoreDT: 88,  scoreSC: 95,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 4, ho: 22, fk: 0, gb: '0.1', mg: 22, cp: 8, cl: 4, effPct: 82, togPct: 75 } },
+        { id: 'carl13', jersey: 25, name: 'D. Cuningham', score: 45,  scoreDT: 45,  scoreSC: 41,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 2, ho: 0, fk: 0, gb: '2.1', mg: 22, cp: 3, cl: 0, effPct: 77, togPct: 67 } },
+        { id: 'carl14', jersey: 17, name: 'J. Newnes', score: 60,  scoreDT: 60,  scoreSC: 64,  stats: { kk: 11, hb: 8,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.1', mg: 34, cp: 6, cl: 2, effPct: 82, togPct: 74 } },
+        { id: 'carl15', jersey: 26, name: 'C. Marchbank', score: 47,  scoreDT: 47,  scoreSC: 51,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 77, togPct: 68 } },
+        { id: 'carl16', jersey: 19, name: 'N. Newman', score: 66,  scoreDT: 66,  scoreSC: 70,  stats: { kk: 10, hb: 6,  mk: 4, tk: 4, ho: 0, fk: 1, gb: '0.0', mg: 30, cp: 5, cl: 1, effPct: 80, togPct: 72 } },
+        { id: 'carl17', jersey: 4,  name: 'J. Durdin', score: 33,  scoreDT: 33,  scoreSC: 29,  stats: { kk: 6,  hb: 4,  mk: 2, tk: 3, ho: 0, fk: 0, gb: '1.0', mg: 18, cp: 3, cl: 0, effPct: 74, togPct: 62 } },
+        { id: 'carl18', jersey: 21, name: 'A. Saad', score: 54,  scoreDT: 54,  scoreSC: 58,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 1, effPct: 79, togPct: 70 } },
+        { id: 'carl19', jersey: 6,  name: 'M. Cottrell', score: 39,  scoreDT: 39,  scoreSC: 35,  stats: { kk: 7,  hb: 6,  mk: 2, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 79, togPct: 68 } },
+        { id: 'carl20', jersey: 23, name: 'E. Curnow', score: 72,  scoreDT: 72,  scoreSC: 77,  stats: { kk: 11, hb: 6,  mk: 4, tk: 3, ho: 0, fk: 1, gb: '3.1', mg: 36, cp: 5, cl: 1, effPct: 83, togPct: 74 } },
+        { id: 'carl21', jersey: 15, name: 'L. Parks', score: 28,  scoreDT: 28,  scoreSC: 25,  stats: { kk: 5,  hb: 3,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '1.1', mg: 16, cp: 2, cl: 0, effPct: 73, togPct: 60 } },
+        { id: 'carl22', jersey: 34, name: 'B. Acres', score: 43,  scoreDT: 43,  scoreSC: 39,  stats: { kk: 8,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'carl23', jersey: 44, name: 'T. Williamson', score: 22,  scoreDT: 22,  scoreSC: 19,  stats: { kk: 4,  hb: 2,  mk: 2, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 10, cp: 1, cl: 0, effPct: 67, togPct: 55 } },
+        // ── Hawthorn (teamB) ────────────────────────────────────────────────
+        { id: 'haw01',  jersey: 8,  name: 'J. Sicily', score: 88,  scoreDT: 88,  scoreSC: 94,  stats: { kk: 14, hb: 7,  mk: 7, tk: 5, ho: 0, fk: 1, gb: '0.2', mg: 46, cp: 7, cl: 2, effPct: 84, togPct: 78 } },
+        { id: 'haw02',  jersey: 12, name: 'J. Newcombe', score: 105, scoreDT: 105, scoreSC: 111, stats: { kk: 18, hb: 13, mk: 7, tk: 6, ho: 0, fk: 2, gb: '0.2', mg: 56, cp: 9, cl: 4, effPct: 87, togPct: 82 } },
+        { id: 'haw03',  jersey: 15, name: 'D. Moore (HB)', score: 62,  scoreDT: 62,  scoreSC: 57,  stats: { kk: 10, hb: 6,  mk: 4, tk: 3, ho: 0, fk: 1, gb: '2.1', mg: 34, cp: 5, cl: 1, effPct: 82, togPct: 72 } },
+        { id: 'haw04',  jersey: 26, name: 'M. Lewis', score: 58,  scoreDT: 58,  scoreSC: 54,  stats: { kk: 9,  hb: 6,  mk: 4, tk: 3, ho: 0, fk: 0, gb: '2.1', mg: 30, cp: 5, cl: 1, effPct: 80, togPct: 70 } },
+        { id: 'haw05',  jersey: 33, name: 'F. Maginness', score: 78,  scoreDT: 78,  scoreSC: 83,  stats: { kk: 13, hb: 10, mk: 5, tk: 5, ho: 0, fk: 0, gb: '0.2', mg: 42, cp: 8, cl: 3, effPct: 85, togPct: 78 } },
+        { id: 'haw06',  jersey: 7,  name: 'J. Gunston', score: 49,  scoreDT: 49,  scoreSC: 44,  stats: { kk: 8,  hb: 4,  mk: 4, tk: 2, ho: 0, fk: 1, gb: '2.0', mg: 28, cp: 4, cl: 0, effPct: 80, togPct: 68 } },
+        { id: 'haw07',  jersey: 5,  name: 'T. Mitchell', score: 115, scoreDT: 115, scoreSC: 122, stats: { kk: 19, hb: 15, mk: 8, tk: 7, ho: 0, fk: 2, gb: '0.2', mg: 60, cp: 10, cl: 4, effPct: 89, togPct: 84 } },
+        { id: 'haw08',  jersey: 11, name: 'L. Shiels', score: 56,  scoreDT: 56,  scoreSC: 60,  stats: { kk: 10, hb: 8,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 32, cp: 6, cl: 2, effPct: 82, togPct: 72 } },
+        { id: 'haw09',  jersey: 9,  name: 'J. Ward', score: 44,  scoreDT: 44,  scoreSC: 40,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 24, cp: 5, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'haw10',  jersey: 23, name: 'C. Macdonald', score: 37,  scoreDT: 37,  scoreSC: 33,  stats: { kk: 6,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 65 } },
+        { id: 'haw11',  jersey: 32, name: 'L. Breust', score: 52,  scoreDT: 52,  scoreSC: 48,  stats: { kk: 8,  hb: 5,  mk: 4, tk: 2, ho: 0, fk: 0, gb: '2.1', mg: 26, cp: 4, cl: 1, effPct: 79, togPct: 68 } },
+        { id: 'haw12',  jersey: 3,  name: 'J. Worpel', score: 84,  scoreDT: 84,  scoreSC: 89,  stats: { kk: 13, hb: 10, mk: 5, tk: 5, ho: 0, fk: 1, gb: '0.1', mg: 42, cp: 7, cl: 3, effPct: 85, togPct: 76 } },
+        { id: 'haw13',  jersey: 6,  name: 'W. Day', score: 68,  scoreDT: 68,  scoreSC: 73,  stats: { kk: 10, hb: 7,  mk: 4, tk: 4, ho: 0, fk: 0, gb: '0.0', mg: 30, cp: 6, cl: 2, effPct: 80, togPct: 74 } },
+        { id: 'haw14',  jersey: 18, name: 'T. Hardwick', score: 40,  scoreDT: 40,  scoreSC: 36,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 75, togPct: 66 } },
+        { id: 'haw15',  jersey: 22, name: 'C. Jiath', score: 59,  scoreDT: 59,  scoreSC: 63,  stats: { kk: 9,  hb: 6,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 26, cp: 5, cl: 1, effPct: 79, togPct: 70 } },
+        { id: 'haw16',  jersey: 4,  name: 'I. Quaynor (HB)', score: 30, scoreDT: 30, scoreSC: 27, stats: { kk: 5,  hb: 4,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 15, cp: 3, cl: 0, effPct: 73, togPct: 62 } },
+        { id: 'haw17',  jersey: 37, name: 'S. Frost', score: 34,  scoreDT: 34,  scoreSC: 30,  stats: { kk: 6,  hb: 4,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 16, cp: 3, cl: 0, effPct: 73, togPct: 62 } },
+        { id: 'haw18',  jersey: 44, name: 'J. Impey', score: 48,  scoreDT: 48,  scoreSC: 43,  stats: { kk: 8,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 22, cp: 4, cl: 1, effPct: 78, togPct: 68 } },
+        { id: 'haw19',  jersey: 16, name: 'D. Howe', score: 41,  scoreDT: 41,  scoreSC: 37,  stats: { kk: 7,  hb: 5,  mk: 3, tk: 3, ho: 0, fk: 0, gb: '0.0', mg: 20, cp: 4, cl: 1, effPct: 76, togPct: 66 } },
+        { id: 'haw20',  jersey: 19, name: 'C. Nash', score: 72,  scoreDT: 72,  scoreSC: 78,  stats: { kk: 6,  hb: 4,  mk: 3, tk: 3, ho: 20, fk: 0, gb: '0.0', mg: 18, cp: 7, cl: 3, effPct: 82, togPct: 72 } },
+        { id: 'haw21',  jersey: 28, name: 'K. Hartigan', score: 27,  scoreDT: 27,  scoreSC: 24,  stats: { kk: 5,  hb: 3,  mk: 2, tk: 2, ho: 0, fk: 0, gb: '0.0', mg: 14, cp: 2, cl: 0, effPct: 72, togPct: 60 } },
+        { id: 'haw22',  jersey: 21, name: 'B. McEvoy', score: 61,  scoreDT: 61,  scoreSC: 66,  stats: { kk: 5,  hb: 4,  mk: 3, tk: 3, ho: 15, fk: 0, gb: '0.0', mg: 16, cp: 5, cl: 2, effPct: 80, togPct: 70 } },
+        { id: 'haw23',  jersey: 34, name: 'S. Butler', score: 22,  scoreDT: 22,  scoreSC: 19,  stats: { kk: 4,  hb: 2,  mk: 1, tk: 1, ho: 0, fk: 0, gb: '0.1', mg: 10, cp: 1, cl: 0, effPct: 67, togPct: 55 } },
+      ]
+    },
+  ],
+  upcomingGames: [
+    {
+      id: 'g003',
+      teamA: { name: 'Geelong', abbr: 'GEE', color: '#002b5c', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Brisbane', abbr: 'BRL', color: '#a30046', score: 0, goals: 0, behinds: 0 },
+      date: 'Sat 22 Jun', time: '7:25 PM AEST', venue: 'GMHBA Stadium', status: 'upcoming', players: []
+    },
+    {
+      id: 'g004',
+      teamA: { name: 'Essendon', abbr: 'ESS', color: '#cc2200', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'GWS Giants', abbr: 'GWS', color: '#f47920', score: 0, goals: 0, behinds: 0 },
+      date: 'Sun 23 Jun', time: '12:35 PM AEST', venue: 'Marvel Stadium', status: 'upcoming', players: []
+    },
+    {
+      id: 'g005',
+      teamA: { name: 'Port Adelaide', abbr: 'PORT', color: '#009fd9', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Sydney', abbr: 'SYD', color: '#ed0f05', score: 0, goals: 0, behinds: 0 },
+      date: 'Sun 23 Jun', time: '3:20 PM AEST', venue: 'Adelaide Oval', status: 'upcoming', players: []
+    },
+    {
+      id: 'g006',
+      teamA: { name: 'West Coast', abbr: 'WCE', color: '#003087', score: 0, goals: 0, behinds: 0 },
+      teamB: { name: 'Fremantle', abbr: 'FRE', color: '#2a0845', score: 0, goals: 0, behinds: 0 },
+      date: 'Sat 22 Jun', time: '4:40 PM AWST', venue: 'Optus Stadium', status: 'upcoming', players: []
+    },
+  ]
+};
+
+/* ================================================================
+   APP STATE
+   Central in-memory state store. Active user persisted to localStorage
+   keyed by email. All other user data lives under fo_user_${email}.
+   ================================================================ */
+const State = {
+  isMockMode: false,
+  activeView: 'watch',
+  activeUser: null,        // { email, name, settings, team, customTeams }
+  // Legacy alias kept so downstream code using State.activeProfile still works
+  get activeProfile() { return this.activeUser; },
+  set activeProfile(v)  { this.activeUser = v; },
+  currentGame: null,       // Game object from MOCK_DATA or live fetch
+  round: 0,
+  liveGames: [],
+  upcomingGames: [],
+  pastGames: [],
+  customTeams: [],         // Array of { id, name, color, playerIds: [] }
+  scoreboardMode: false,   // If true: show all players, no toasts
+  overlayVisible: false,
+  overlayMinimised: false,
+  overlayElement: null,     // #overlay DOM node (can be moved to PiP/popup window)
+  overlayPopoutWindow: null,
+  overlayPopoutMode: null,  // 'pip' | 'popup' | null
+  overlayPosition: { x: null, y: null }, // null = use CSS default
+  prevScores: {},          // { [playerId]: score } — used to detect changes for flashing
+  pollingTimers: {},       // Named timers for polling
+  confirmCallback: null,   // Callback for the confirm modal
+};
+
+function getOverlayElement() {
+  return State.overlayElement || document.getElementById('overlay');
+}
+
+function getOverlayDocument() {
+  const overlay = getOverlayElement();
+  return overlay ? overlay.ownerDocument : document;
+}
+
+/* ================================================================
+   LOCAL STORAGE HELPERS
+   Global app-level keys live under "footyoverlay_v1_" prefix.
+   Per-user data lives under "fo_user_${email}_" prefix — this means
+   signing out and back in with the same email fully restores all data.
+   ================================================================ */
+const LS_KEY = 'footyoverlay_v1';
+
+function lsGet(key) {
+  try { return JSON.parse(localStorage.getItem(`${LS_KEY}_${key}`)); }
+  catch { return null; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(`${LS_KEY}_${key}`, JSON.stringify(val)); }
+  catch (e) { console.warn('LocalStorage write failed:', e); }
+}
+function lsClear() {
+  // Clears only the active user's data, not other accounts stored on device
+  if (State.activeUser?.email) {
+    userLsClear(State.activeUser.email);
+  }
+  lsGet; // no-op reference to avoid removal by minifiers
+}
+
+/** Per-user localStorage key */
+function userKey(email, field) {
+  return `fo_user_${email.toLowerCase().trim()}_${field}`;
+}
+function userLsGet(email, field) {
+  try { return JSON.parse(localStorage.getItem(userKey(email, field))); }
+  catch { return null; }
+}
+function userLsSet(email, field, val) {
+  try { localStorage.setItem(userKey(email, field), JSON.stringify(val)); }
+  catch (e) { console.warn('LocalStorage write failed:', e); }
+}
+function userLsClear(email) {
+  const prefix = `fo_user_${email.toLowerCase().trim()}_`;
+  Object.keys(localStorage).filter(k => k.startsWith(prefix))
+                            .forEach(k => localStorage.removeItem(k));
+}
+
+/* ================================================================
+   USER AUTH — Email-based soft identity system
+   ================================================================ */
+
+/**
+ * Deterministically derive a hex background colour from an email string.
+ * Uses a simple hash so the same email always maps to the same colour,
+ * and the colour is always dark enough to contrast white text.
+ *
+ * @param {string} email
+ * @returns {string} hex colour e.g. "#3b5fa0"
+ */
+function emailToColour(email) {
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    hash = (hash << 5) - hash + email.charCodeAt(i);
+    hash |= 0; // to 32-bit int
+  }
+  // Use the hash to pick hue; fix saturation and lightness to readable range
+  const hue = Math.abs(hash) % 360;
+  return hslToHex(hue, 55, 38);
+}
+
+function hslToHex(h, s, l) {
+  s /= 100; l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const col = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * col).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * Derive initials from a display name.
+ * "L. Neale" → "LN", "Dustin" → "D"
+ */
+function nameToInitials(name) {
+  return name.trim().split(/\s+/)
+    .map(w => w[0]?.toUpperCase() || '')
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('');
+}
+
+/** Default user settings applied to every new account */
+function defaultSettings() {
+  return {
+    scoringSystem:  'afl_fantasy',
+    overlayPosition:'top-right',
+    toastsEnabled:  true,
+    soundEnabled:   false,
+    soundVolume:    60,
+    pollInterval:   30,
+    myTeamColour:   '#3b82f6', // default blue — user can change per-game
+  };
+}
+
+/**
+ * Load a user record from localStorage by email.
+ * If the email is seen for the first time, create a fresh record using
+ * the supplied displayName. If seen before, the stored name is used
+ * (displayName arg is ignored on subsequent logins).
+ *
+ * @param {string} email
+ * @param {string} displayName  - only used when creating a new record
+ * @returns {Object} user record
+ */
+function loadOrCreateUser(email, displayName) {
+  const stored = userLsGet(email, 'profile');
+  if (stored) {
+    // Returning user — restore full record
+    return stored;
+  }
+  // First time this email — create fresh record
+  const user = {
+    email:        email.toLowerCase().trim(),
+    name:         displayName.trim(),
+    settings:     defaultSettings(),
+    team:         [],
+    customTeams:  [],
+  };
+  userLsSet(email, 'profile', user);
+  return user;
+}
+
+/**
+ * Persist the active user's record back to localStorage.
+ */
+function saveCurrentUser() {
+  if (!State.activeUser) return;
+  userLsSet(State.activeUser.email, 'profile', State.activeUser);
+}
+
+// Alias kept for compatibility with downstream callers
+function saveCurrentProfile() { saveCurrentUser(); }
+
+/**
+ * Activate a user session: update State, update header UI, apply settings.
+ */
+function activateUser(user) {
+  State.activeUser = user;
+  // Remember who was last active so we can skip the login screen on reload
+  lsSet('activeEmail', user.email);
+  State.customTeams = [...(user.customTeams || [])];
+  updateHeaderUser(user);
+  applyProfileSettings(user);
+}
+
+/**
+ * Apply a user's saved settings to every settings UI control.
+ * Called on login, session restore, and account switch.
+ * Safe to call with a partially-formed user object — every read uses
+ * optional chaining or falls back to the defaultSettings() values.
+ *
+ * @param {Object} user  - active user record (must have a .settings property)
+ */
+function applyProfileSettings(user) {
+  const s = (user && user.settings) ? user.settings : defaultSettings();
+
+  // ── Scoring system radio buttons ──────────────────────────────────────────
+  document.querySelectorAll('[name="scoring-system"]').forEach(radio => {
+    radio.checked = (radio.value === (s.scoringSystem || 'afl_fantasy'));
+  });
+
+  // ── Overlay position dropdown ─────────────────────────────────────────────
+  const posEl = document.getElementById('setting-position');
+  if (posEl) posEl.value = s.overlayPosition || 'top-right';
+
+  // ── Notification toggles ──────────────────────────────────────────────────
+  const toastsEl = document.getElementById('setting-toasts');
+  if (toastsEl) toastsEl.checked = s.toastsEnabled !== false; // default true
+
+  const soundEl = document.getElementById('setting-sound');
+  if (soundEl) soundEl.checked = !!s.soundEnabled;
+
+  const volRow = document.getElementById('sound-volume-row');
+  if (volRow) volRow.style.display = s.soundEnabled ? 'flex' : 'none';
+
+  const volEl = document.getElementById('setting-volume');
+  const volume = s.soundVolume ?? 60;
+  if (volEl) volEl.value = volume;
+  updateVolumeDisplay(volume);
+
+  // ── Poll interval dropdown ────────────────────────────────────────────────
+  const pollEl = document.getElementById('setting-poll-interval');
+  if (pollEl) pollEl.value = s.pollInterval || 30;
+
+  // ── Restore custom teams into State ──────────────────────────────────────
+  State.customTeams = [...(user.customTeams || [])];
+}
+
+/**
+ * Update the header chip to reflect the signed-in user.
+ */
+function updateHeaderUser(user) {
+  const wrap    = document.getElementById('user-menu-wrap');
+  const badge   = document.getElementById('user-initials-badge');
+  const chipName  = document.getElementById('user-chip-name');
+  const chipEmail = document.getElementById('user-chip-email');
+
+  badge.textContent  = nameToInitials(user.name);
+  badge.style.background = emailToColour(user.email);
+  chipName.textContent   = user.name;
+  chipEmail.textContent  = user.email;
+  wrap.style.display     = 'flex';
+}
+
+/**
+ * Sign the current user out: clears the active session from memory
+ * and from the "last active" key, but keeps all their localStorage
+ * data intact so re-entering the same email restores everything.
+ */
+function signOut() {
+  State.activeUser = null;
+  lsSet('activeEmail', null);
+  stopPolling();
+  document.getElementById('user-menu-wrap').style.display = 'none';
+  openLoginScreen();
+}
+
+/* ================================================================
+   LOGIN SCREEN
+   ================================================================ */
+function openLoginScreen() {
+  document.getElementById('login-screen').classList.add('open');
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-name').value  = '';
+  // Pre-fill email if we know it from a previous session (switch-account path)
+  const lastEmail = lsGet('activeEmail');
+  if (lastEmail && lastEmail !== 'null') {
+    document.getElementById('login-email').value = lastEmail;
+  }
+  // Focus email field after paint
+  requestAnimationFrame(() => document.getElementById('login-email').focus());
+}
+
+function closeLoginScreen() {
+  document.getElementById('login-screen').classList.remove('open');
+}
+
+document.getElementById('btn-login').addEventListener('click', handleLogin);
+document.getElementById('login-email').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('login-name').focus();
+});
+document.getElementById('login-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter') handleLogin();
+});
+
+function handleLogin() {
+  const emailEl = document.getElementById('login-email');
+  const nameEl  = document.getElementById('login-name');
+  const email   = emailEl.value.trim().toLowerCase();
+  const name    = nameEl.value.trim();
+
+  // Validate email
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    emailEl.focus();
+    emailEl.style.borderColor = 'var(--accent-red)';
+    setTimeout(() => emailEl.style.borderColor = '', 1500);
+    return;
+  }
+
+  // Name: required on first-ever login; optional for returning users
+  // (we'll use the stored name if field is blank)
+  const stored = userLsGet(email, 'profile');
+  const resolvedName = name || stored?.name || email.split('@')[0];
+
+  const user = loadOrCreateUser(email, resolvedName);
+  // If a name was provided, update it (lets users change their display name)
+  if (name) user.name = name;
+
+  closeLoginScreen();
+  activateUser(user);
+  if (user.team?.length) renderTeamTable(user.team);
+  renderWatchTab(State.liveGames, State.upcomingGames, State.pastGames);
+  startPolling();
+  showView('watch');
+}
+
+/* ================================================================
+   USER MENU DROPDOWN
+   ================================================================ */
+const userChip     = document.getElementById('user-chip');
+const userDropdown = document.getElementById('user-dropdown');
+
+userChip.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = userDropdown.classList.toggle('open');
+  userChip.setAttribute('aria-expanded', isOpen);
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  userChip.setAttribute('aria-expanded', 'false');
+});
+userDropdown.addEventListener('click', e => e.stopPropagation());
+
+document.getElementById('btn-switch-account').addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  // Keep data — just return to login screen without clearing activeEmail
+  State.activeUser = null;
+  stopPolling();
+  document.getElementById('user-menu-wrap').style.display = 'none';
+  openLoginScreen();
+});
+
+document.getElementById('btn-sign-out').addEventListener('click', () => {
+  userDropdown.classList.remove('open');
+  signOut();
+});
+
+/* ================================================================
+   VIEW MANAGEMENT
+   SPA navigation — swaps .active class on <section> elements.
+   ================================================================ */
+const VIEW_IDS = {
+  watch:          'view-watch',
+  settings:       'view-settings',
+  'game-detail':  'view-game-detail',
+  'customise':    'view-customise',
+};
+
+// Views that require an active login session.
+// Navigating to these without a session redirects to the login screen.
+const AUTH_REQUIRED_VIEWS = new Set(['settings', 'game-detail', 'customise']);
+
+function showView(viewName) {
+  // Gate auth-required views behind a login check
+  if (AUTH_REQUIRED_VIEWS.has(viewName) && !State.activeUser) {
+    openLoginScreen();
+    return;
+  }
+
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  const el = document.getElementById(VIEW_IDS[viewName] || VIEW_IDS['watch']);
+  if (el) el.classList.add('active');
+  State.activeView = viewName;
+  document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.view === viewName);
+  });
+  const overlayToggleBtn = document.getElementById('overlay-toggle-btn');
+  if (overlayToggleBtn) overlayToggleBtn.style.display = viewName === 'game-detail' ? 'flex' : 'none';
+
+  // Auto-focus first focusable element for D-pad navigation
+  if (el) {
+    requestAnimationFrame(() => {
+      const candidates = SpatialNav.getCandidates(el);
+      if (candidates.length) candidates[0].focus({ preventScroll: true });
+    });
+  }
+}
+
+/* ================================================================
+   MODAL HELPERS
+   ================================================================ */
+
+// Focus trap: keeps D-pad/Tab inside an open modal.
+// Called once per modal element — the handler self-checks .open so it's safe
+// to leave attached permanently.
+function trapFocus(modalEl) {
+  modalEl.addEventListener('keydown', e => {
+    if (e.key !== 'Tab' || !modalEl.classList.contains('open')) return;
+    const focusable = [...modalEl.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last  = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  });
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  // Move focus into modal so D-pad navigation starts inside it
+  const firstFocusable = el.querySelector(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (firstFocusable) requestAnimationFrame(() => firstFocusable.focus());
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+}
+
+// Attach focus traps to all modals on load
+document.querySelectorAll('.modal-backdrop').forEach(trapFocus);
+
+// Wire up all modal close triggers
+document.querySelectorAll('[data-modal]').forEach(btn => {
+  btn.addEventListener('click', () => closeModal(btn.dataset.modal));
+});
+
+// Close modal on backdrop click
+document.querySelectorAll('.modal-backdrop').forEach(bd => {
+  bd.addEventListener('click', e => {
+    if (e.target === bd) bd.classList.remove('open');
+  });
+});
+
+// Escape key closes modals (but not the login screen — user must log in)
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+/* ================================================================
+   ANDROID TV — BACK BUTTON (hardware remote / Capacitor popstate)
+   ================================================================
+   Android TV back button fires popstate because Capacitor's WebView
+   exposes it as browser history navigation. With a SPA there is no
+   meaningful back-history, so without this handler the first Back
+   press exits the app entirely.
+
+   Strategy: always keep one dummy history entry ahead of the real
+   origin so there is always something to pop. On each popstate:
+     1. Close any open modal first.
+     2. If in a sub-view, return to Watch.
+     3. Otherwise stay on Watch (re-push the dummy entry).
+================================================================ */
+window.history.pushState({ footy: true }, '');
+
+window.addEventListener('popstate', () => {
+  // 1. Close open modals
+  const openModal = document.querySelector('.modal-backdrop.open');
+  if (openModal) {
+    openModal.classList.remove('open');
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 2. Login screen can't be dismissed with Back
+  if (document.getElementById('login-screen').classList.contains('open')) {
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 3. Sub-view → Watch
+  if (State.activeView && State.activeView !== 'watch') {
+    showView('watch');
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 4. Already on Watch — stay (prevents exiting the app accidentally)
+  window.history.pushState({ footy: true }, '');
+});
+
+/* Confirm modal */
+function showConfirm(message, onConfirm) {
+  document.getElementById('modal-confirm-message').textContent = message;
+  State.confirmCallback = onConfirm;
+  openModal('modal-confirm');
+}
+document.getElementById('modal-confirm-ok').addEventListener('click', () => {
+  closeModal('modal-confirm');
+  if (State.confirmCallback) State.confirmCallback();
+  State.confirmCallback = null;
+});
+
+/* ================================================================
+   NAVIGATION WIRING
+   ================================================================ */
+document.querySelectorAll('.nav-tab, .bottom-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const view = btn.dataset.view;
+    if (view) showView(view);
+  });
+});
+
+
+
+/* ================================================================
+   GAME CARD RENDERING
+   ================================================================ */
+function renderGameCard(game) {
+  const isLive = game.status === 'live';
+  const card = document.createElement('article');
+  card.className = 'game-card';
+  card.tabIndex = 0;
+  card.setAttribute('role', 'listitem');
+  card.setAttribute('aria-label', `${game.teamA.name} vs ${game.teamB.name}${isLive ? ' - Live' : ''}`);
+
+  const isFinal = game.status === 'final';
+  const showScores = isLive || isFinal;
+  const scoreA = showScores ? game.teamA.score : '';
+  const scoreB = showScores ? game.teamB.score : '';
+  const leaderA = showScores && game.teamA.score >= game.teamB.score ? 'leader' : '';
+  const leaderB = showScores && game.teamB.score > game.teamA.score  ? 'leader' : '';
+
+  const qLabel = game.quarter ? `Q${game.quarter}` : '';
+  const tLabel = game.timeRemaining || '';
+  const qtDisplay = [qLabel, tLabel].filter(Boolean).join(' · ');
+  const statusHtml = isLive
+    ? `<span class="live-badge">LIVE</span>${qtDisplay ? `<span class="game-quarter">${qtDisplay}</span>` : ''}`
+    : isFinal
+      ? `<span class="final-badge">FINAL</span>`
+      : `<span class="upcoming-badge">${game.date}</span>`;
+
+  card.innerHTML = `
+    <div class="game-card-stripe" style="background:${game.teamA.color}"></div>
+    <div class="game-card-inner">
+      <div class="game-card-status">${statusHtml}</div>
+      <div class="game-teams">
+        <div class="game-team-row">
+          <span class="team-name">${escHtml(game.teamA.name)}</span>
+          ${showScores ? `<span class="team-score ${leaderA}">${scoreA}</span>` : ''}
+        </div>
+        <div class="game-team-row">
+          <span class="team-name" style="color:var(--text-muted)">${escHtml(game.teamB.name)}</span>
+          ${showScores ? `<span class="team-score ${leaderB}">${scoreB}</span>` : ''}
+        </div>
+      </div>
+      <div class="game-meta">
+        <span>${escHtml(game.venue)}</span>
+        ${(!isLive && !isFinal && game.time) ? `<span>${escHtml(game.time)}</span>` : ''}
+        ${isFinal ? `<span style="color:var(--accent-alert);font-size:0.72rem;font-weight:600;">${game.teamA.goals}.${game.teamA.behinds}.${game.teamA.score} def${game.teamB.score >= game.teamA.score ? 'd by' : ''} ${game.teamB.goals}.${game.teamB.behinds}.${game.teamB.score}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Click / Enter → open game detail
+  const openDetail = () => openGameDetail(game);
+  card.addEventListener('click', openDetail);
+  card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') openDetail(); });
+
+  return card;
+}
+
+function renderWatchTab(liveGames, upcomingGames, pastGames = []) {
+  const liveRow = document.getElementById('live-games-row');
+  const upcomingGrid = document.getElementById('upcoming-games-grid');
+  const liveCountBadge = document.getElementById('live-count-badge');
+
+  // Live games
+  liveRow.innerHTML = '';
+  if (liveGames.length === 0) {
+    liveRow.innerHTML = `<div class="empty-state"><div class="empty-icon">📺</div>
+      <p>No live games right now. Check back during AFL game times.</p></div>`;
+  } else {
+    liveGames.forEach(g => liveRow.appendChild(renderGameCard(g)));
+  }
+  liveCountBadge.textContent = `${liveGames.length} LIVE`;
+
+  // Upcoming games
+  upcomingGrid.innerHTML = '';
+  const round = State.isMockMode ? MOCK_DATA.round : (State.round || '?');
+  document.getElementById('upcoming-round-label').textContent = `Round ${round}`;
+
+  if (upcomingGames.length === 0) {
+    upcomingGrid.innerHTML = `<div class="empty-state"><div class="empty-icon">📅</div>
+      <p>No upcoming games found for this round.</p></div>`;
+  } else {
+    upcomingGames.forEach(g => upcomingGrid.appendChild(renderGameCard(g)));
+  }
+
+  // Past (final) games
+  const pastGrid    = document.getElementById('past-games-grid');
+  const recentHead  = document.getElementById('recent-section-heading');
+  if (pastGrid) {
+    pastGrid.innerHTML = '';
+    if (pastGames && pastGames.length > 0) {
+      if (recentHead) recentHead.style.display = '';
+      pastGames.forEach(g => pastGrid.appendChild(renderGameCard(g)));
+    } else {
+      if (recentHead) recentHead.style.display = 'none';
+    }
+  }
+}
+
+// Sort state for game-detail stats table
+const StatsSort = {
+  col: 'score',
+  asc: false,
+};
+
+/**
+ * Compatibility shim for older login flows that call renderTeamTable().
+ * This build now uses custom team cards instead of a dedicated team table.
+ */
+function renderTeamTable(team = []) {
+  if (!State.activeProfile) return;
+  State.activeProfile.team = Array.isArray(team) ? team : [];
+  saveCurrentProfile();
+}
+
+/**
+ * Render per-player stats for the selected game in the game detail view.
+ */
+function renderGameStats(game) {
+  const mount = document.getElementById('game-stats-content');
+  if (!mount) return;
+
+  const players = [...(game?.players || [])];
+  if (players.length === 0) {
+    mount.innerHTML = '<div class="text-muted">No player stats available for this game yet.</div>';
+    return;
+  }
+
+  const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+  const scoreLabel = isSC ? 'SC' : 'DT';
+  const scoreOf = (p) => (isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0));
+
+  const norm = (value, col) => {
+    if (col === 'name') return String(value || '');
+    return Number(value ?? 0);
+  };
+
+  const rows = players.map(p => ({
+    id: p.id,
+    jersey: p.jersey ?? 0,
+    name: formatPlayerName(p.name),
+    score: scoreOf(p),
+  }));
+
+  const sorted = [...rows].sort((a, b) => {
+    const col = StatsSort.col;
+    const av = norm(a[col], col);
+    const bv = norm(b[col], col);
+    if (typeof av === 'string' || typeof bv === 'string') {
+      return StatsSort.asc ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    }
+    return StatsSort.asc ? (av - bv) : (bv - av);
+  });
+
+  const sortableHeader = (key, label) => {
+    const active = StatsSort.col === key;
+    const arrow = active ? `<span class="sort-arrow">${StatsSort.asc ? '↑' : '↓'}</span>` : '';
+    const cls = active ? 'sorted' : '';
+    return `<th class="${cls}" data-col="${key}">${label}${arrow}</th>`;
+  };
+
+  const teamAIds = new Set(getPlayersForSide('teamA').map(p => p.id));
+  const teamBIds = new Set(getPlayersForSide('teamB').map(p => p.id));
+  const teamARows = sorted.filter(r => teamAIds.has(r.id));
+  const teamBRows = sorted.filter(r => teamBIds.has(r.id));
+
+  const renderTable = (rowsForTeam, teamName, teamColor) => `
+    <div class="stats-team-label" style="color:${getReadableTextColour(teamColor)};border-left:4px solid ${teamColor};padding-left:8px;">
+      ${escHtml(teamName)}
+    </div>
+    <div class="stats-table-wrap">
+      <table class="stats-table" aria-label="${escHtml(teamName)} player stats">
+        <thead>
+          <tr>
+            ${sortableHeader('name', 'Player')}
+            ${sortableHeader('jersey', '#')}
+            ${sortableHeader('score', scoreLabel)}
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsForTeam.map(r => `
+            <tr data-player-id="${r.id}">
+              <td>${escHtml(r.name)}</td>
+              <td>${r.jersey || '–'}</td>
+              <td class="score-col">${r.score}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  mount.innerHTML = `
+    ${renderTable(teamARows, game.teamA.name, game.teamA.color)}
+    ${renderTable(teamBRows, game.teamB.name, game.teamB.color)}
+  `;
+
+  mount.querySelectorAll('th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (!col) return;
+      if (StatsSort.col === col) {
+        StatsSort.asc = !StatsSort.asc;
+      } else {
+        StatsSort.col = col;
+        StatsSort.asc = false;
+      }
+      renderGameStats(game);
+    });
+  });
+}
+
+/* ================================================================
+   GAME DETAIL VIEW
+   ================================================================ */
+function openGameDetail(game) {
+  State.currentGame = game;
+  document.getElementById('detail-matchup').textContent =
+    `${game.teamA.name} vs ${game.teamB.name}`;
+
+  const liveScoreEl  = document.getElementById('detail-live-score');
+  const statusBadge  = document.getElementById('detail-status-badge');
+  const overlayBtn   = document.getElementById('overlay-toggle-btn');
+
+  if (game.status === 'live') {
+    const quarter = game.quarter       || '—';
+    const timeRem = game.timeRemaining || '';
+    const timeStr = timeRem ? ` ${timeRem}` : '';
+    liveScoreEl.textContent =
+      `${game.teamA.score} – ${game.teamB.score}  |  Q${quarter}${timeStr}`;
+    statusBadge.innerHTML = `<span class="live-badge" aria-label="Game is live">LIVE</span>`;
+    overlayBtn.style.display = 'flex';
+  } else if (game.status === 'final') {
+    // Show final scores in the header
+    const aScore = `${game.teamA.goals}.${game.teamA.behinds}.${game.teamA.score}`;
+    const bScore = `${game.teamB.goals}.${game.teamB.behinds}.${game.teamB.score}`;
+    const winner = game.teamA.score >= game.teamB.score ? game.teamA.name : game.teamB.name;
+    liveScoreEl.textContent = `${aScore}  –  ${bScore}`;
+    statusBadge.innerHTML =
+      `<span class="final-badge" aria-label="Game finished">FULL TIME</span>`;
+    overlayBtn.style.display = 'none';
+  } else {
+    // Upcoming
+    const date = game.date || '—';
+    const time = game.time || '—';
+    liveScoreEl.textContent = `${date} · ${time}`;
+    statusBadge.innerHTML =
+      `<span class="upcoming-badge" aria-label="Upcoming game">UPCOMING</span>`;
+    overlayBtn.style.display = 'none';
+  }
+
+  // Hide action buttons for completed (final) games — stats only
+  const isFinalGame = game.status === 'final';
+  const actionDiv = document.querySelector('.game-detail-actions');
+  if (actionDiv) actionDiv.style.display = isFinalGame ? 'none' : '';
+
+  // Reset sort to score descending each time a new game opens
+  StatsSort.col = 'score';
+  StatsSort.asc = false;
+  renderGameStats(game);
+  showView('game-detail');
+}
+
+document.getElementById('game-detail-back').addEventListener('click', () => showView('watch'));
+
+
+
+// Begin Overlay
+document.getElementById('btn-begin-overlay').addEventListener('click', () => {
+  if (!State.currentGame) return;
+  const hasSelections = State.scoreboardMode ||
+    State.customTeams.some(t => t.playerIds.length > 0);
+  if (!hasSelections) {
+    showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0, 'neutral');
+    return;
+  }
+  activateOverlay();
+});
+
+/* ================================================================
+   CUSTOMISE PLAYERS (View 3) — team card system
+   ================================================================
+
+   ARCHITECTURE:
+   State.customTeams holds an array of team entries:
+     { id, name, color, playerIds[], readonly? }
+
+   Three special IDs are reserved:
+     'ct_myteam'  — "My Team" card (pre-populated from user's imported team)
+     'ct_N'       — User-created custom teams (N = timestamp)
+
+   The overlay expects the same { id, name, color, playerIds[] } shape —
+   nothing downstream needs to change.
+
+   Player picker modal opens on each team card's "+ Add Players" button.
+   It shows both AFL team squads side-by-side with checkboxes; pre-checks
+   whatever players are already in the target team card.
+   ================================================================ */
+
+// Which team card is currently being edited in the picker modal
+let _pickerTargetId = null;
+// Temporary selection state inside the picker (not committed until Confirm)
+let _pickerSelection = [];
+
+document.getElementById('customise-back').addEventListener('click', () => showView('game-detail'));
+
+document.getElementById('btn-scoreboard-mode').addEventListener('click', () => {
+  showConfirm(
+    'Full Scoreboard Mode resets all selections and shows every player. Toaster notifications will be disabled. Continue?',
+    () => {
+      State.scoreboardMode = true;
+      State.customTeams = [];
+      renderTeamCards();
+      showToast('📋', 'Scoreboard Mode active', 'Showing all players. Toasts disabled.', 0, 'neutral');
+    }
+  );
+});
+
+document.getElementById('btn-save-customise').addEventListener('click', () => {
+  if (State.activeProfile) {
+    State.activeProfile.customTeams = State.customTeams;
+    saveCurrentProfile();
+  }
+  showView('game-detail');
+});
+
+document.getElementById('btn-add-custom-team').addEventListener('click', () => {
+  const customCount = State.customTeams.filter(t => t.id.startsWith('ct_')).length;
+  const totalCount  = State.customTeams.length;
+  if (totalCount >= 5) {
+    showToast('⚠️', 'Maximum reached', 'Remove a team to add another (max 5 total)', 0, 'neutral');
+    return;
+  }
+  const idx = customCount + 1;
+  const colors = ['#a855f7','#f59e0b','#ff6b35','#00d4ff','#ff1493'];
+  State.customTeams.push({
+    id:        `ct_${Date.now()}`,
+    name:      `Team ${idx}`, // 1=My Team, then 2, 3, 4, 5
+    color:     colors[customCount % colors.length],
+    playerIds: [],
+    readonly:  false,
+  });
+  renderTeamCards();
+});
+
+// Player picker modal wiring
+document.getElementById('modal-picker-close').addEventListener('click',  () => closeModal('modal-player-picker'));
+document.getElementById('modal-picker-cancel').addEventListener('click', () => closeModal('modal-player-picker'));
+document.getElementById('modal-picker-confirm').addEventListener('click', () => {
+  // Commit _pickerSelection into the target team card
+  const team = State.customTeams.find(t => t.id === _pickerTargetId);
+  if (team) {
+    team.playerIds = [..._pickerSelection];
+  }
+  closeModal('modal-player-picker');
+  renderTeamCards();
+});
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * Ensure the reserved "My Team" card exists in State.customTeams,
+ * pre-populated with players from the user's imported team who
+ * appear in the current game. Preserves existing custom teams.
+ */
+function ensureReservedCards() {
+  if (!State.currentGame) return;
+  const user = State.activeProfile;
+  const s    = user?.settings || {};
+
+  if (!State.customTeams.find(t => t.id === 'ct_myteam')) {
+    // Match user's team players against the current game by formatted name
+    const userTeamNames = new Set((user?.team || []).map(p => formatPlayerName(p.name)));
+    const matchingIds   = (State.currentGame.players || [])
+      .filter(p => userTeamNames.has(formatPlayerName(p.name)))
+      .map(p => p.id);
+
+    State.customTeams.unshift({
+      id:        'ct_myteam',
+      name:      'My Team',
+      color:     s.myTeamColour || '#3b82f6',
+      playerIds: matchingIds,
+      readonly:  false,
+    });
+  }
+}
+
+/**
+ * Render all team cards into #team-cards-wrap.
+ */
+function renderTeamCards() {
+  const wrap  = document.getElementById('team-cards-wrap');
+  const label = document.getElementById('team-card-count-label');
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) {
+    wrap.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">🏉</div>
+      <p>No game selected. Go back and tap a live game card first.</p>
+    </div>`;
+    return;
+  }
+
+  ensureReservedCards();
+
+  const count = State.customTeams.length;
+  label.textContent = `${count} / 5 teams`;
+
+  State.customTeams.forEach(team => {
+    const card = buildTeamCard(team);
+    wrap.appendChild(card);
+  });
+}
+
+/**
+ * Build a single team card DOM element.
+ * @param {Object} team - { id, name, color, playerIds[], readonly? }
+ * @returns {HTMLElement}
+ */
+function buildTeamCard(team) {
+  const allPlayers = State.currentGame?.players || [];
+  const players    = allPlayers.filter(p => team.playerIds.includes(p.id));
+
+  const card = document.createElement('div');
+  card.className = 'team-card';
+  card.dataset.teamId = team.id;
+
+  /* ── Header ──────────────────────────────────────────────────────────── */
+  const header = document.createElement('div');
+  header.className = 'team-card-header';
+  header.style.borderLeftColor = team.color;
+
+  // Colour swatch row — 8 preset colours, currently selected has white ring
+  const SWATCH_COLOURS = ['#3b82f6','#ef4444','#00ff88','#f59e0b','#a855f7','#ff6b35','#00d4ff','#ff1493'];
+  // Colour picker: single circle button that opens a swatch popover
+  const cpWrap = document.createElement('div');
+  cpWrap.className = 'colour-picker-wrap';
+
+  const cpBtn = document.createElement('button');
+  cpBtn.className = 'colour-picker-btn';
+  cpBtn.style.background = team.color;
+  cpBtn.title = 'Change colour';
+  cpBtn.setAttribute('aria-label', 'Change team colour');
+  cpBtn.type = 'button';
+
+  // Popover is appended to <body> so it's never clipped by card/header overflow
+  const cpPopover = document.createElement('div');
+  cpPopover.className = 'colour-popover';
+  let popoverOpen = false;
+
+  const closePopover = (e) => {
+    if (!popoverOpen) return;
+    popoverOpen = false;
+    document.body.removeChild(cpPopover);
+    document.removeEventListener('click', outsideClickHandler, true);
+  };
+
+  const outsideClickHandler = (e) => {
+    if (!cpPopover.contains(e.target) && e.target !== cpBtn) {
+      closePopover();
+    }
+  };
+
+  const openPopover = () => {
+    if (popoverOpen) { closePopover(); return; }
+    popoverOpen = true;
+    document.body.appendChild(cpPopover);
+
+    // Position below the button, flip upward if it would overflow viewport
+    const btnRect = cpBtn.getBoundingClientRect();
+    const PAD = 6;
+    let top  = btnRect.bottom + PAD + window.scrollY;
+    let left = btnRect.left + btnRect.width / 2 - (cpPopover.offsetWidth / 2 || 52) + window.scrollX;
+
+    // Clamp horizontal so it doesn't go off-screen
+    const popW = cpPopover.offsetWidth || 108;
+    left = Math.max(8, Math.min(left, window.innerWidth - popW - 8));
+
+    // Flip upward if too close to bottom
+    const popH = cpPopover.offsetHeight || 76;
+    if (btnRect.bottom + PAD + popH > window.innerHeight) {
+      top = btnRect.top - PAD - popH + window.scrollY;
+    }
+
+    cpPopover.style.top  = top + 'px';
+    cpPopover.style.left = left + 'px';
+
+    // Defer outside-click listener so it doesn't fire on the same click that opened
+    setTimeout(() => document.addEventListener('click', outsideClickHandler, true), 0);
+  };
+
+  const applyColour = (colour) => {
+    team.color = colour;
+    cpBtn.style.background       = colour;
+    header.style.borderLeftColor = colour;
+    nameEl.style.color = getReadableTextColour(colour);
+    cpPopover.querySelectorAll('.colour-swatch').forEach(s => {
+      s.classList.toggle('active', s.dataset.colour === colour);
+    });
+    if (team.id === 'ct_myteam' && State.activeProfile) {
+      State.activeProfile.settings.myTeamColour = colour;
+      saveCurrentProfile();
+    }
+  };
+
+  SWATCH_COLOURS.forEach(colour => {
+    const sw = document.createElement('div');
+    sw.className = 'colour-swatch';
+    sw.dataset.colour = colour;
+    sw.style.background = colour;
+    sw.title = colour;
+    if (colour.toLowerCase() === team.color.toLowerCase()) sw.classList.add('active');
+    sw.addEventListener('click', e => {
+      e.stopPropagation();
+      applyColour(colour);
+      closePopover();
+    });
+    sw.tabIndex = 0;
+    sw.addEventListener('keydown', e => { if (e.key === 'Enter') { applyColour(colour); closePopover(); } });
+    cpPopover.appendChild(sw);
+  });
+
+  cpBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    openPopover();
+  });
+
+  cpWrap.appendChild(cpBtn);
+  // Note: cpPopover is NOT appended to cpWrap — it goes to body on open
+
+  const swatchWrap = cpWrap; // alias for the header.appendChild call below
+
+  // Team name (editable input)
+  const nameWrap = document.createElement('div');
+  nameWrap.className = 'team-card-name';
+  const nameEl = document.createElement('input');
+  nameEl.type  = 'text';
+  nameEl.value = team.name;
+  nameEl.style.color = getReadableTextColour(team.color);
+  nameEl.setAttribute('aria-label', 'Team name');
+  nameEl.addEventListener('input', e => { team.name = e.target.value; });
+  nameWrap.appendChild(nameEl);
+
+  // Count badge
+  const countBadge = document.createElement('span');
+  countBadge.className = 'team-card-count';
+  countBadge.textContent = `${players.length} players`;
+
+  // Delete button (not shown for My Team / Opp Team)
+  const headerRight = document.createElement('div');
+  headerRight.style.cssText = 'display:flex;gap:6px;align-items:center;flex-shrink:0;';
+  headerRight.appendChild(countBadge);
+  if (team.id !== 'ct_myteam') {
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn-ghost btn-sm';
+    delBtn.style.cssText = 'padding:3px 8px;font-size:0.7rem;color:var(--text-muted);';
+    delBtn.textContent = '✕';
+    delBtn.setAttribute('aria-label', `Remove ${team.name}`);
+    delBtn.addEventListener('click', () => {
+      State.customTeams = State.customTeams.filter(t => t.id !== team.id);
+      renderTeamCards();
+    });
+    headerRight.appendChild(delBtn);
+  }
+
+  header.appendChild(swatchWrap);
+  header.appendChild(nameWrap);
+  header.appendChild(headerRight);
+  card.appendChild(header);
+
+  /* ── Body: player list ──────────────────────────────────────────────── */
+  const body = document.createElement('div');
+  body.className = 'team-card-body';
+
+  // Special empty state for My Team with no matching players
+  if (team.id === 'ct_myteam' && players.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'team-card-empty';
+    empty.textContent = 'None of your players are in this game';
+    body.appendChild(empty);
+  } else if (players.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'team-card-empty';
+    empty.textContent = 'No players added yet — use the button below';
+    body.appendChild(empty);
+  } else {
+    const list = document.createElement('div');
+    list.className = 'team-card-player-list';
+    players.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'team-card-player-row';
+      row.innerHTML = `
+        <span class="team-card-jersey">${p.jersey || '–'}</span>
+        <span class="team-card-player-name">${escHtml(formatPlayerName(p.name))}</span>
+      `;
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'team-card-remove';
+      removeBtn.setAttribute('aria-label', `Remove ${formatPlayerName(p.name)}`);
+      removeBtn.textContent = '✕';
+      removeBtn.addEventListener('click', () => {
+        team.playerIds = team.playerIds.filter(id => id !== p.id);
+        renderTeamCards();
+      });
+      row.appendChild(removeBtn);
+      list.appendChild(row);
+    });
+    body.appendChild(list);
+  }
+  card.appendChild(body);
+
+  /* ── Footer: + Add Players ─────────────────────────────────────────── */
+  const footer = document.createElement('div');
+  footer.className = 'team-card-footer';
+
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn btn-ghost btn-sm';
+  addBtn.textContent = '+ Add Players';
+  addBtn.addEventListener('click', () => openPlayerPicker(team));
+  footer.appendChild(addBtn);
+
+  card.appendChild(footer);
+  return card;
+}
+
+
+/**
+ * Open the player picker modal for a given team card.
+ * Shows both AFL team squads side-by-side with the team card's
+ * current selections pre-checked.
+ * @param {Object} team - the team card being edited
+ */
+function openPlayerPicker(team) {
+  _pickerTargetId  = team.id;
+  _pickerSelection = [...team.playerIds]; // work on a copy until Confirm
+
+  document.getElementById('modal-picker-title').textContent = `Add Players — ${team.name}`;
+
+  const wrap = document.getElementById('picker-panels-wrap');
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) { openModal('modal-player-picker'); return; }
+
+  ['teamA', 'teamB'].forEach(side => {
+    const afl     = State.currentGame[side];
+    const players = getPlayersForSide(side);
+
+    const panel = document.createElement('div');
+    panel.className = 'pick-panel';
+
+    // Panel header
+    const header = document.createElement('div');
+    header.className = 'pick-panel-header';
+    header.style.borderLeftColor = afl.color;
+
+    const title = document.createElement('span');
+    title.className = 'pick-panel-title';
+    title.style.color = getReadableTextColour(afl.color);
+    title.textContent = afl.name;
+
+    const countBadge = document.createElement('span');
+    countBadge.className = 'pick-panel-count';
+    const updateCount = () => {
+      const n = players.filter(p => _pickerSelection.includes(p.id)).length;
+      countBadge.textContent = `${n} / ${players.length}`;
+    };
+    updateCount();
+
+    header.appendChild(title);
+    header.appendChild(countBadge);
+    panel.appendChild(header);
+
+    // Scrollable list
+    const list = document.createElement('div');
+    list.className = 'pick-list';
+
+    // Select all row
+    const allRow = document.createElement('div');
+    allRow.className = 'pick-select-all';
+    allRow.tabIndex = 0;
+    allRow.setAttribute('role', 'button');
+    allRow.setAttribute('aria-label', 'Toggle select all');
+    const allCheck = document.createElement('div');
+    allCheck.className = 'pick-checkbox';
+    const allLabel = document.createElement('span');
+    allLabel.textContent = 'Select all';
+    allRow.appendChild(allCheck);
+    allRow.appendChild(allLabel);
+    list.appendChild(allRow);
+
+    // Player rows
+    players.forEach(p => {
+      const row = document.createElement('div');
+      const isSel = _pickerSelection.includes(p.id);
+      row.className = `pick-row${isSel ? ' selected' : ''}`;
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-selected', String(isSel));
+      row.tabIndex = 0;
+
+      const cb = document.createElement('div');
+      cb.className = 'pick-checkbox';
+      const jersey = document.createElement('span');
+      jersey.className = 'pick-jersey';
+      jersey.textContent = p.jersey || '–';
+      const name = document.createElement('span');
+      name.className = 'pick-name';
+      name.textContent = formatPlayerName(p.name);
+
+      row.appendChild(cb); row.appendChild(jersey);
+      row.appendChild(name);
+
+      const toggle = () => {
+        const idx = _pickerSelection.indexOf(p.id);
+        if (idx === -1) {
+          _pickerSelection.push(p.id);
+          row.classList.add('selected');
+          row.setAttribute('aria-selected', 'true');
+        } else {
+          _pickerSelection.splice(idx, 1);
+          row.classList.remove('selected');
+          row.setAttribute('aria-selected', 'false');
+        }
+        updateCount();
+        const allSel = players.every(pl => _pickerSelection.includes(pl.id));
+        allCheck.style.background  = allSel ? 'var(--accent-blue)' : '';
+        allCheck.style.borderColor = allSel ? 'var(--accent-blue)' : '';
+      };
+      row.addEventListener('click', toggle);
+      row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }});
+      list.appendChild(row);
+    });
+
+    // Select-all toggle
+    const toggleAll = () => {
+      const allSel = players.every(p => _pickerSelection.includes(p.id));
+      players.forEach(p => {
+        const idx = _pickerSelection.indexOf(p.id);
+        if (allSel && idx !== -1) _pickerSelection.splice(idx, 1);
+        else if (!allSel && idx === -1) _pickerSelection.push(p.id);
+      });
+      // Re-render by re-calling openPlayerPicker is too heavy;
+      // instead update each row's visual state directly
+      list.querySelectorAll('.pick-row').forEach((row, i) => {
+        const isSel = _pickerSelection.includes(players[i]?.id);
+        row.classList.toggle('selected', isSel);
+        row.setAttribute('aria-selected', String(isSel));
+      });
+      const nowAll = players.every(p => _pickerSelection.includes(p.id));
+      allCheck.style.background  = nowAll ? 'var(--accent-blue)' : '';
+      allCheck.style.borderColor = nowAll ? 'var(--accent-blue)' : '';
+      updateCount();
+    };
+    allRow.addEventListener('click', toggleAll);
+    allRow.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAll(); }});
+
+    panel.appendChild(list);
+    wrap.appendChild(panel);
+  });
+
+  openModal('modal-player-picker');
+}
+
+/**
+ * Return the player list for one side of the current game.
+ * No slice/filter — always returns the full squad.
+ */
+function getPlayersForSide(side) {
+  const g = State.currentGame;
+  if (!g) return [];
+  if (g.teamAPlayers && g.teamBPlayers) {
+    return side === 'teamA' ? g.teamAPlayers : g.teamBPlayers;
+  }
+  const all = g.players || [];
+  if (all.length === 0) return [];
+  // Split by position in the players array; ids like rich01-rich23 / coll01-coll23
+  // mean the first half are teamA and the second half are teamB.
+  const half = Math.ceil(all.length / 2);
+  return side === 'teamA' ? all.slice(0, half) : all.slice(half);
+}
+
+/* btn-customise-players is wired here */
+document.getElementById('btn-customise-players').addEventListener('click', () => {
+  State.scoreboardMode = false;
+  showView('customise');
+  renderTeamCards();
+});
+
+/* ================================================================
+   OVERLAY (View 4)
+   Fixed, draggable, always-on-top scoring panel
+   ================================================================ */
+function activateOverlay() {
+  State.overlayVisible = true;
+  const overlay = getOverlayElement();
+  overlay.classList.add('active');
+  State.overlayMinimised = false;
+  overlay.classList.remove('minimised');
+  renderOverlayTables();
+}
+
+function deactivateOverlay() {
+  State.overlayVisible = false;
+  const overlay = getOverlayElement();
+  if (overlay) overlay.classList.remove('active');
+}
+
+document.getElementById('overlay-toggle-btn').addEventListener('click', () => {
+  State.overlayVisible ? deactivateOverlay() : activateOverlay();
+});
+
+document.getElementById('overlay-close-btn').addEventListener('click', deactivateOverlay);
+
+document.getElementById('overlay-popout-btn').addEventListener('click', async () => {
+  if (State.overlayPopoutWindow) {
+    closeOverlayPopout();
+  } else {
+    await openOverlayPopout();
+  }
+});
+
+document.getElementById('overlay-minimise-btn').addEventListener('click', () => {
+  State.overlayMinimised = !State.overlayMinimised;
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+  overlay.classList.toggle('minimised', State.overlayMinimised);
+  document.getElementById('overlay-minimise-btn').textContent = State.overlayMinimised ? '+' : '−';
+});
+
+function copyStylesToDocument(targetDoc) {
+  const nodes = document.querySelectorAll('style,link[rel="stylesheet"]');
+  nodes.forEach(node => targetDoc.head.appendChild(node.cloneNode(true)));
+}
+
+function updateOverlayPopoutButton() {
+  const btn = document.getElementById('overlay-popout-btn');
+  if (!btn) return;
+  const active = !!State.overlayPopoutWindow;
+  btn.textContent = active ? '⇲' : '⧉';
+  btn.title = active ? 'Return overlay to main window' : 'Pop out overlay';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+async function openOverlayPopout() {
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+  const rect = overlay.getBoundingClientRect();
+  const desiredWidth = Math.max(320, Math.min(460, Math.ceil(rect.width || 360)));
+  const desiredHeight = Math.max(320, Math.min(window.screen.availHeight - 80, Math.ceil(rect.height || 520)));
+
+  try {
+    if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
+      const pipWin = await window.documentPictureInPicture.requestWindow({ width: desiredWidth, height: desiredHeight });
+      copyStylesToDocument(pipWin.document);
+      pipWin.document.documentElement.style.background = 'transparent';
+      pipWin.document.documentElement.style.colorScheme = 'dark';
+      pipWin.document.body.style.margin = '0';
+      pipWin.document.body.style.padding = '0';
+      pipWin.document.body.style.background = 'transparent';
+      pipWin.document.body.style.overflow = 'hidden';
+      pipWin.document.body.style.display = 'inline-block';
+      pipWin.document.body.appendChild(overlay);
+      overlay.classList.add('popout');
+      overlay.style.left = '0';
+      overlay.style.top = '0';
+      overlay.style.right = 'auto';
+      overlay.style.bottom = 'auto';
+      overlay.style.width = '100%';
+      overlay.style.maxWidth = 'none';
+      overlay.style.height = 'auto';
+
+      State.overlayPopoutWindow = pipWin;
+      State.overlayPopoutMode = 'pip';
+      updateOverlayPopoutButton();
+      pipWin.addEventListener('pagehide', () => closeOverlayPopout(true), { once: true });
+      return;
+    }
+  } catch (err) {
+    console.warn('[FootyOverlay] Document PiP unavailable:', err?.message || err);
+  }
+
+  const popup = window.open('', 'footyoverlay_overlay', `popup=yes,width=${desiredWidth},height=${desiredHeight}`);
+  if (!popup) {
+    showToast('⚠️', 'Popup blocked', 'Allow popups to use cross-app overlay window', 0, 'neutral');
+    return;
+  }
+
+  popup.document.open();
+  popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>FootyOverlay</title></head><body></body></html>');
+  popup.document.close();
+  copyStylesToDocument(popup.document);
+  popup.document.documentElement.style.background = 'transparent';
+  popup.document.documentElement.style.colorScheme = 'dark';
+  popup.document.body.style.margin = '0';
+  popup.document.body.style.padding = '0';
+  popup.document.body.style.background = 'transparent';
+  popup.document.body.style.overflow = 'hidden';
+  popup.document.body.style.display = 'inline-block';
+  popup.document.body.appendChild(overlay);
+  overlay.classList.add('popout');
+  overlay.style.left = '0';
+  overlay.style.top = '0';
+  overlay.style.right = 'auto';
+  overlay.style.bottom = 'auto';
+  overlay.style.width = '100%';
+  overlay.style.maxWidth = 'none';
+  overlay.style.height = 'auto';
+
+  State.overlayPopoutWindow = popup;
+  State.overlayPopoutMode = 'popup';
+  updateOverlayPopoutButton();
+  popup.addEventListener('beforeunload', () => closeOverlayPopout(true), { once: true });
+}
+
+function closeOverlayPopout(fromWindowEvent = false) {
+  const win = State.overlayPopoutWindow;
+  const overlay = getOverlayElement();
+  if (!win || !overlay) return;
+
+  document.body.appendChild(overlay);
+  overlay.classList.remove('popout');
+  overlay.style.width = '';
+  overlay.style.maxWidth = '';
+  overlay.style.height = '';
+  applyOverlayPosition(State.activeProfile?.settings.overlayPosition || 'top-right');
+
+  if (!fromWindowEvent) {
+    try { win.close(); } catch (_) { /* no-op */ }
+  }
+
+  State.overlayPopoutWindow = null;
+  State.overlayPopoutMode = null;
+  updateOverlayPopoutButton();
+}
+
+/* ---- DRAGGABLE OVERLAY ---- */
+(function initDrag() {
+  const overlay = getOverlayElement();
+  const handle  = document.getElementById('overlay-drag-handle');
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+
+  const getOverlayRect = () => overlay.getBoundingClientRect();
+
+  function onPointerDown(e) {
+    if (e.target.closest('.overlay-btn')) return; // don't drag on buttons
+    isDragging = true;
+    overlay.classList.add('dragging');
+    const rect = getOverlayRect();
+    startX = e.clientX; startY = e.clientY;
+    startLeft = rect.left; startTop = rect.top;
+    // Switch from CSS default positioning to explicit
+    overlay.style.left  = startLeft + 'px';
+    overlay.style.top   = startTop  + 'px';
+    overlay.style.right = 'auto';
+    overlay.style.bottom = 'auto';
+    e.preventDefault();
+  }
+
+  function onPointerMove(e) {
+    if (!isDragging) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const maxX = window.innerWidth  - overlay.offsetWidth;
+    const maxY = window.innerHeight - overlay.offsetHeight;
+    overlay.style.left = Math.max(0, Math.min(maxX, startLeft + dx)) + 'px';
+    overlay.style.top  = Math.max(0, Math.min(maxY, startTop  + dy)) + 'px';
+  }
+
+  function onPointerUp() {
+    isDragging = false;
+    overlay.classList.remove('dragging');
+  }
+
+  handle.addEventListener('pointerdown', onPointerDown);
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup',   onPointerUp);
+})();
+
+/**
+ * Renders all overlay team tables from current State.customTeams.
+ * Uses the active scoring system (DT or SC) for scores and totals.
+ */
+function renderOverlayTables() {
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+  const wrap = overlay.querySelector('#overlay-tables-wrap');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  if (!State.currentGame) return;
+
+  const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+  const scoreLabel = isSC ? 'SC' : 'DT';
+
+  const playerScore = p => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
+
+  const teams = State.scoreboardMode
+    ? [
+        {
+          id:        'scoreboard_teamA',
+          name:      State.currentGame.teamA.name,
+          color:     State.currentGame.teamA.color,
+          playerIds: getPlayersForSide('teamA').sort((a,b) => (a.jersey||99)-(b.jersey||99)).map(p => p.id),
+        },
+        {
+          id:        'scoreboard_teamB',
+          name:      State.currentGame.teamB.name,
+          color:     State.currentGame.teamB.color,
+          playerIds: getPlayersForSide('teamB').sort((a,b) => (a.jersey||99)-(b.jersey||99)).map(p => p.id),
+        },
+      ]
+    : State.customTeams;
+
+  if (teams.length === 0) {
+    wrap.innerHTML = `<div style="padding:16px;color:var(--text-muted);font-size:0.8rem;text-align:center;">
+      No teams configured. Set up teams in Customise Players.</div>`;
+    return;
+  }
+
+  teams.forEach(team => {
+    const players = (State.currentGame.players || [])
+      .filter(p => team.playerIds.includes(p.id))
+      .sort((a, b) => {
+        const scoreDiff = playerScore(b) - playerScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return (a.jersey || 99) - (b.jersey || 99);
+      });
+
+    const tableEl = document.createElement('div');
+    tableEl.className = 'overlay-team-table';
+    tableEl.dataset.teamId = team.id;
+
+    const rows = players.map(p => `
+      <tr>
+        <td style="color:var(--text-muted)">#${p.jersey ?? '–'}</td>
+        <td>${escHtml(formatPlayerName(p.name))}</td>
+        <td id="score-cell-${team.id}-${p.id}" class="player-score-cell">
+          ${playerScore(p)}
+        </td>
+      </tr>
+    `).join('');
+
+    const overlayNameColour = getReadableTextColour(team.color);
+    tableEl.innerHTML = `
+      <div class="overlay-team-name" style="border-left-color:${team.color};color:${overlayNameColour}">
+        ${escHtml(team.name)}
+        <span style="color:var(--text-muted);font-size:0.7rem;margin-left:8px;">
+          ${players.reduce((s, p) => s + playerScore(p), 0)} pts
+        </span>
+      </div>
+      <table class="overlay-table">
+        <thead>
+          <tr>
+            <th>#</th><th>Player</th><th>${scoreLabel}</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+
+    wrap.appendChild(tableEl);
+  });
+
+  // Apply scrollable fade hint if content overflows
+  const tables = wrap;
+  requestAnimationFrame(() => {
+    const isScrollable = tables.scrollHeight > tables.clientHeight;
+    tables.dataset.scrollable = isScrollable;
+  });
+}
+
+/**
+ * Update overlay scores after a data poll.
+ * Diffs against prevScores and adds flash animations.
+ * @param {Array} players - Updated player array from poll
+ */
+/**
+ * Update overlay scores after a data poll.
+ * Uses active scoring system (DT or SC).
+ */
+function updateOverlayScores(players) {
+  if (!State.overlayVisible) return;
+  const overlay = getOverlayElement();
+  if (!overlay) return;
+
+  const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+  const playerScore = p => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
+  const overlayTeams = State.scoreboardMode
+    ? [
+        {
+          id: 'scoreboard_teamA',
+          playerIds: getPlayersForSide('teamA').map(p => p.id),
+        },
+        {
+          id: 'scoreboard_teamB',
+          playerIds: getPlayersForSide('teamB').map(p => p.id),
+        },
+      ]
+    : State.customTeams;
+
+  players.forEach(p => {
+    const curScore = playerScore(p);
+    const prev = State.prevScores[p.id] ?? curScore;
+    overlayTeams.forEach(team => {
+      if (!team.playerIds.includes(p.id)) return;
+      const cell = overlay.querySelector(`#score-cell-${team.id}-${p.id}`);
+      if (!cell) return;
+      cell.textContent = curScore;
+      if (curScore !== prev) {
+        const cls = curScore > prev ? 'score-flash-up' : 'score-flash-down';
+        cell.classList.remove('score-flash-up', 'score-flash-down');
+        void cell.offsetWidth;
+        cell.classList.add(cls);
+        cell.addEventListener('animationend', () => cell.classList.remove(cls), { once: true });
+      }
+    });
+    State.prevScores[p.id] = curScore;
+  });
+
+  // Update team totals in headers
+  overlayTeams.forEach(team => {
+    const total = players
+      .filter(p => team.playerIds.includes(p.id))
+      .reduce((s, p) => s + playerScore(p), 0);
+    const nameEl = overlay.querySelector(`.overlay-team-table[data-team-id="${team.id}"] .overlay-team-name`);
+    if (nameEl) {
+      const span = nameEl.querySelector('span');
+      if (span) span.textContent = `${total} pts`;
+    }
+  });
+
+  // Keep rows sorted by score descending after live score updates.
+  overlay.querySelectorAll('.overlay-team-table tbody').forEach(tbody => {
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort((rA, rB) => {
+      const aScore = Number((rA.children[2]?.textContent || '0').trim()) || 0;
+      const bScore = Number((rB.children[2]?.textContent || '0').trim()) || 0;
+      if (bScore !== aScore) return bScore - aScore;
+      const aJersey = Number((rA.children[0]?.textContent || '').replace(/[^\d.-]/g, '')) || 99;
+      const bJersey = Number((rB.children[0]?.textContent || '').replace(/[^\d.-]/g, '')) || 99;
+      return aJersey - bJersey;
+    });
+    rows.forEach(row => tbody.appendChild(row));
+  });
+}
+
+/* ================================================================
+  OVERLAY POSITIONING
+  ================================================================ */
+function applyOverlayPosition(position) {
+  const el = getOverlayElement();
+  if (!el) return;
+  el.style.top = 'auto';
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+  el.style.left = 'auto';
+  switch(position) {
+    case 'top-right':    el.style.top='80px'; el.style.right='20px'; el.style.left='auto'; el.style.bottom='auto'; break;
+    case 'top-left':     el.style.top='80px'; el.style.left='20px'; el.style.right='auto'; el.style.bottom='auto'; break;
+    case 'bottom-right': el.style.bottom='90px'; el.style.right='20px'; el.style.left='auto'; el.style.top='auto'; break;
+    case 'bottom-left':  el.style.bottom='90px'; el.style.left='20px'; el.style.right='auto'; el.style.top='auto'; break;
+  }
+}
+
+function updateVolumeDisplay(val) {
+  const el = document.getElementById('volume-value');
+  if (el) el.textContent = `${val}%`;
+}
+
+/* ================================================================
+   TOAST NOTIFICATIONS
+   ================================================================ */
+/**
+ * Show a toast notification.
+ * @param {string} icon       - Emoji icon
+ * @param {string} player     - Player name (or heading)
+ * @param {string} action     - Action description
+ * @param {number} points     - Points value (0 = no points display)
+ * @param {string} [type]     - 'positive' (default, green border) | 'negative' (red border) | 'neutral' (amber border)
+ */
+function showToast(icon, player, action, points, type = 'positive') {
+  // Check if toasts are enabled (and not in scoreboard mode for scoring events)
+  if (State.activeProfile) {
+    const toastsOn = State.activeProfile.settings.toastsEnabled;
+    if (!toastsOn && points !== 0) return; // allow system toasts (points===0)
+    if (State.scoreboardMode && points !== 0) return;
+  }
+
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  const typeClass = type === 'negative' ? ' negative' : type === 'neutral' ? ' neutral' : '';
+  toast.className = `toast${typeClass}`;
+  toast.setAttribute('role', 'alert');
+
+  const pointsHtml = points !== 0
+    ? `<span class="toast-points${points < 0 ? ' negative' : ''}">${points > 0 ? '+' : ''}${points}pts</span>`
+    : '';
+  const actionHtml = action
+    ? `<div class="toast-action">${escHtml(action)}</div>`
+    : '';
+
+  toast.innerHTML = `
+    <span class="toast-icon">${icon}</span>
+    <div class="toast-content">
+      <div class="toast-player">${escHtml(player)}</div>
+      ${actionHtml}
+    </div>
+    ${pointsHtml}
+  `;
+
+  container.appendChild(toast);
+
+  // Play sound if enabled
+  if (State.activeProfile?.settings.soundEnabled) {
+    playNotificationBeep(State.activeProfile.settings.soundVolume);
+  }
+
+  // Auto-dismiss after 4 seconds
+  setTimeout(() => {
+    toast.style.animation = 'toast-out 0.3s ease both';
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+  }, 4000);
+}
+
+/** Simple beep using Web Audio API — no external sounds needed */
+function playNotificationBeep(volume = 60) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.value = 880;
+    gain.gain.value = (volume / 100) * 0.3;
+    osc.start();
+    osc.stop(ctx.currentTime + 0.12);
+  } catch { /* Audio not supported */ }
+}
+
+/* ================================================================
+   DATA LAYER — Polling + Fetching
+   ================================================================ */
+
+/**
+ * Fetch game data from the Netlify proxy function.
+ * Falls back to mock data on failure or in mock mode.
+ *
+ * NOTE: The Netlify function at /netlify/functions/fanfooty-proxy
+ * must be deployed for real data. See fanfooty-proxy.js for details.
+ *
+ * @returns {Promise<{liveGames: Array, upcomingGames: Array}>}
+ */
+async function fetchGameData() {
+  if (State.isMockMode) return simulateMockData();
+
+  try {
+    const res = await fetch('/api/fanfooty-proxy');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    console.warn('[FootyOverlay] Fetch failed, falling back to mock data:', err.message);
+    State.isMockMode = true; // auto-switch to mock on failure
+    document.body.classList.add('mock-mode');
+    return simulateMockData();
+  }
+}
+
+/**
+ * Simulates live score changes in mock data for demo purposes.
+ * Every call increments some scores randomly to demo flash animations.
+ */
+function simulateMockData() {
+  const data = JSON.parse(JSON.stringify(MOCK_DATA)); // deep clone
+  // Simulate score ticks on live games
+  data.liveGames.forEach(game => {
+    game.players.forEach(p => {
+      // 20% chance of a score change each poll
+      if (Math.random() < 0.2) {
+        const scoringSystem = State.activeProfile?.settings.scoringSystem || 'afl_fantasy';
+        const pts = scoringSystem === 'supercoach' ? SUPERCOACH_POINTS : AFL_FANTASY_POINTS;
+        const actions = [
+          { key: 'goal',         label: 'Goal',             pts: pts.goal,         type: 'positive' },
+          { key: 'mark',         label: 'Mark',             pts: pts.mark,         type: 'positive' },
+          { key: 'tackle',       label: 'Tackle',           pts: pts.tackle,       type: 'positive' },
+          { key: 'kick',         label: 'Kick',             pts: pts.kick,         type: 'positive' },
+          { key: 'handball',     label: 'Handball',         pts: pts.handball,     type: 'positive' },
+          { key: 'hb_clanger',   label: 'Handball Clanger', pts: pts.hb_clanger,   type: 'negative' },
+          { key: 'kick_clanger', label: 'Kick Clanger',     pts: pts.kick_clanger, type: 'negative' },
+          { key: 'free_against', label: 'Free Against',     pts: pts.free_against, type: 'negative' },
+        ];
+        // Weight: positive actions more frequent than negative (5:3 ratio is natural)
+        // Negative actions have a lower individual probability — reroll if negative
+        let action = actions[Math.floor(Math.random() * actions.length)];
+        if (action.type === 'negative' && Math.random() < 0.4) {
+          action = actions[Math.floor(Math.random() * 5)]; // pick a positive instead
+        }
+        const delta = Math.round(action.pts);
+        p.score   = (p.score   || 0) + delta;
+        p.scoreDT = (p.scoreDT || 0) + Math.round(AFL_FANTASY_POINTS[action.key] || delta);
+        p.scoreSC = (p.scoreSC || 0) + Math.round(SUPERCOACH_POINTS[action.key] || delta);
+
+        // Only fire toast if this player is in a tracked team
+        const isTracked = State.customTeams.some(t => t.playerIds.includes(p.id));
+        if (isTracked && State.overlayVisible) {
+          const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+          const toastDelta = isSC
+            ? Math.round(SUPERCOACH_POINTS[action.key] || delta)
+            : Math.round(AFL_FANTASY_POINTS[action.key] || delta);
+          const icon = action.type === 'negative' ? '💀' : '⚡';
+          showToast(icon, formatPlayerName(p.name), '', toastDelta, action.type);
+        }
+      }
+    });
+  });
+  return { liveGames: data.liveGames, upcomingGames: data.upcomingGames, pastGames: data.pastGames || [], round: data.round };
+}
+
+/** Main poll — refreshes live game data */
+async function pollLiveData() {
+  const data = await fetchGameData();
+  State.liveGames     = data.liveGames;
+  State.upcomingGames = data.upcomingGames;
+  State.pastGames     = data.pastGames || [];
+  if (data.round) State.round = data.round;
+
+  // Re-render watch tab if it's active
+  if (State.activeView === 'watch') {
+    renderWatchTab(State.liveGames, State.upcomingGames, State.pastGames);
+  }
+
+  // Update current game if open
+  if (State.currentGame) {
+    const updated = data.liveGames.find(g => g.id === State.currentGame.id);
+    if (updated) {
+      const isSC = State.activeProfile?.settings.scoringSystem === 'supercoach';
+      const scoreOf = (p) => isSC ? (p.scoreSC ?? p.score ?? 0) : (p.scoreDT ?? p.score ?? 0);
+      const trackedIds = new Set(State.customTeams.flatMap(t => t.playerIds));
+      const prevPlayers = State.currentGame.players;
+      State.currentGame = updated;
+      updateOverlayScores(updated.players);
+      // Refresh game stats table if game detail view is active
+      if (State.activeView === 'game-detail') renderGameStats(updated);
+      // Emit toasts for each changed player
+      updated.players.forEach(p => {
+        const prev = prevPlayers.find(pp => pp.id === p.id);
+        if (!prev) return;
+
+        const delta = scoreOf(p) - scoreOf(prev);
+        if (delta === 0) return;
+
+        State.prevScores[p.id] = scoreOf(prev);
+
+        if (State.overlayVisible && trackedIds.has(p.id)) {
+          const type = delta > 0 ? 'positive' : 'negative';
+          const icon = delta > 0 ? '⚡' : '💀';
+          showToast(icon, formatPlayerName(p.name), '', delta, type);
+        }
+      });
+    }
+  }
+}
+
+/** Sets up polling timers. Call once on init, and whenever interval setting changes. */
+function startPolling() {
+  stopPolling();
+  const interval = (State.activeProfile?.settings.pollInterval || 30) * 1000;
+  // Initial fetch immediately
+  pollLiveData();
+  State.pollingTimers.live = setInterval(pollLiveData, interval);
+  // Upcoming games refresh every 5 minutes
+  State.pollingTimers.upcoming = setInterval(pollLiveData, 5 * 60 * 1000);
+}
+
+function stopPolling() {
+  clearInterval(State.pollingTimers.live);
+  clearInterval(State.pollingTimers.upcoming);
+}
+
+/* ================================================================
+   SETTINGS WIRING
+   ================================================================ */
+document.getElementById('setting-position').addEventListener('change', e => {
+  applyOverlayPosition(e.target.value);
+  if (State.activeProfile) {
+    State.activeProfile.settings.overlayPosition = e.target.value;
+    saveCurrentProfile();
+  }
+});
+
+document.querySelectorAll('[name="scoring-system"]').forEach(r => {
+  r.addEventListener('change', e => {
+    if (State.activeProfile) {
+      State.activeProfile.settings.scoringSystem = e.target.value;
+      saveCurrentProfile();
+    }
+  });
+});
+
+document.getElementById('setting-toasts').addEventListener('change', e => {
+  if (State.activeProfile) {
+    State.activeProfile.settings.toastsEnabled = e.target.checked;
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-sound').addEventListener('change', e => {
+  const soundRow = document.getElementById('sound-volume-row');
+  soundRow.style.display = e.target.checked ? 'flex' : 'none';
+  if (State.activeProfile) {
+    State.activeProfile.settings.soundEnabled = e.target.checked;
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-volume').addEventListener('input', e => {
+  updateVolumeDisplay(e.target.value);
+  if (State.activeProfile) {
+    State.activeProfile.settings.soundVolume = parseInt(e.target.value);
+    saveCurrentProfile();
+  }
+});
+
+document.getElementById('setting-poll-interval').addEventListener('change', e => {
+  if (State.activeProfile) {
+    State.activeProfile.settings.pollInterval = parseInt(e.target.value);
+    saveCurrentProfile();
+    startPolling(); // restart with new interval
+  }
+});
+
+document.getElementById('btn-clear-data').addEventListener('click', () => {
+  showConfirm(
+    '⚠️ This will permanently delete all locally stored data for your account. Are you sure?',
+    () => {
+      stopPolling();
+      if (State.activeUser?.email) userLsClear(State.activeUser.email);
+      signOut();
+    }
+  );
+});
+
+/* ================================================================
+   UTILITY
+   ================================================================ */
+/**
+ * Format a player name to "I. Surname" display format.
+ * Handles multi-word first names ("Jason Horne-Francis" → "J. Horne-Francis"),
+ * hyphenated surnames, and single-word names gracefully.
+ * Idempotent — already-shortened names (e.g. "J. Horne-Francis") pass through.
+ *
+ * @param {string} fullName
+ * @returns {string}  e.g. "Patrick Dangerfield" → "P. Dangerfield"
+ */
+function formatPlayerName(fullName) {
+  if (!fullName) return '';
+  const trimmed = fullName.trim();
+  // Already in short form — first word is a single letter followed by a dot
+  if (/^[A-Z]\.\s/.test(trimmed)) return trimmed;
+  const parts = trimmed.split(/\s+/);
+  if (parts.length === 1) return trimmed; // single-word name — return as-is
+  const initial = parts[0][0].toUpperCase() + '.';
+  const surname = parts.slice(1).join(' ');
+  return `${initial} ${surname}`;
+}
+
+/**
+ * Return a readable text colour for display on a dark background.
+ * If the colour's relative luminance is below 0.15 (near-black),
+ * return white instead so text is always visible.
+ * Specifically fixes Collingwood (#000000) and other dark team colours.
+ *
+ * @param {string} hex  e.g. '#000000' or '#3b82f6'
+ * @returns {string}    the input hex or '#ffffff'
+ */
+function getReadableTextColour(hex) {
+  if (!hex || hex.length < 4) return '#ffffff';
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+  const r = parseInt(h.slice(0,2),16)/255;
+  const g = parseInt(h.slice(2,4),16)/255;
+  const b = parseInt(h.slice(4,6),16)/255;
+  // sRGB linearise
+  const lin = c => c <= 0.03928 ? c/12.92 : Math.pow((c+0.055)/1.055, 2.4);
+  const L = 0.2126*lin(r) + 0.7152*lin(g) + 0.0722*lin(b);
+  return L < 0.15 ? '#ffffff' : hex;
+}
+
+/** Safely escapes HTML to prevent XSS */
+function escHtml(str) {
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+/* ================================================================
+   SPATIAL NAVIGATION — Android TV D-pad support
+   Intercepts arrow keys (37-40) and moves focus to the nearest
+   focusable element in that direction using getBoundingClientRect().
+   Enter (13/32) fires click on the focused element.
+   ================================================================ */
+const SpatialNav = (() => {
+  const FOCUSABLE = [
+    'a[href]',
+    'button:not([disabled])',
+    'input:not([disabled])',
+    'select:not([disabled])',
+    'textarea:not([disabled])',
+    '[tabindex]:not([tabindex="-1"])',
+  ].join(', ');
+
+  function getCandidates(container) {
+    return [...(container || document).querySelectorAll(FOCUSABLE)].filter(el => {
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    });
+  }
+
+  function center(r) {
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  function score(from, to, dir) {
+    const fc = center(from);
+    const tc = center(to);
+    const dx = tc.x - fc.x;
+    const dy = tc.y - fc.y;
+
+    // Primary axis distance (must be positive in the pressed direction)
+    // Perpendicular axis distance (penalised)
+    let primary, perp;
+    if (dir === 'left')  { primary = -dx; perp = Math.abs(dy); }
+    if (dir === 'right') { primary =  dx; perp = Math.abs(dy); }
+    if (dir === 'up')    { primary = -dy; perp = Math.abs(dx); }
+    if (dir === 'down')  { primary =  dy; perp = Math.abs(dx); }
+
+    if (primary <= 0) return Infinity; // wrong direction
+    return primary + perp * 2;        // weight perpendicular distance more
+  }
+
+  function move(dir) {
+    // Confine navigation inside an open modal if one exists
+    const openModal = document.querySelector('.modal-backdrop.open');
+    const scope = openModal || document;
+    const candidates = getCandidates(scope);
+    if (!candidates.length) return;
+
+    const active = document.activeElement;
+    if (!active || !candidates.includes(active)) {
+      candidates[0].focus({ preventScroll: false });
+      return;
+    }
+
+    const fromRect = active.getBoundingClientRect();
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const el of candidates) {
+      if (el === active) continue;
+      const s = score(fromRect, el.getBoundingClientRect(), dir);
+      if (s < bestScore) { bestScore = s; best = el; }
+    }
+
+    if (best) best.focus({ preventScroll: false });
+  }
+
+  function activate(el) {
+    // For toggle labels and radio labels acting as D-pad targets, click the
+    // underlying input. For everything else just fire a click.
+    if (el.classList.contains('toggle')) {
+      const cb = el.querySelector('input[type="checkbox"]');
+      if (cb) { cb.checked = !cb.checked; cb.dispatchEvent(new Event('change', { bubbles: true })); return; }
+    }
+    if (el.tagName === 'LABEL') {
+      const input = document.getElementById(el.htmlFor) || el.querySelector('input');
+      if (input) { input.click(); return; }
+    }
+    el.click();
+  }
+
+  document.addEventListener('keydown', e => {
+    const KEY = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
+    if (KEY[e.keyCode]) {
+      e.preventDefault();
+      move(KEY[e.keyCode]);
+      return;
+    }
+    // Enter or Space activates the focused element
+    if (e.keyCode === 13 || e.keyCode === 32) {
+      const el = document.activeElement;
+      if (el && el !== document.body) {
+        e.preventDefault();
+        activate(el);
+      }
+    }
+  });
+
+  return { getCandidates, move };
+})();
+
+/* ================================================================
+   INIT — Entry point
+   ================================================================ */
+function init() {
+  State.overlayElement = document.getElementById('overlay');
+  updateOverlayPopoutButton();
+
+  // ── Mock mode ──────────────────────────────────────────────────────────────
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('mock') === 'true') {
+    State.isMockMode = true;
+    document.body.classList.add('mock-mode');
+    console.info('[FootyOverlay] Running in MOCK MODE — no live data will be fetched.');
+  }
+
+  // Seed the watch tab with empty state immediately so layout is visible
+  renderWatchTab([], [], []);
+
+  // ── Attempt to restore last session ────────────────────────────────────────
+  // "activeEmail" is set by activateUser() and cleared by signOut().
+  const lastEmail = lsGet('activeEmail');
+
+  if (lastEmail && lastEmail !== 'null') {
+    const stored = userLsGet(lastEmail, 'profile');
+    if (stored) {
+      // Returning user with a saved profile — skip login screen entirely
+      activateUser(stored);
+      startPolling();
+      showView('watch');
+      console.info('[FootyOverlay] Restored session for', stored.email);
+      return;
+    }
+  }
+
+  // ── No active session — show login screen ─────────────────────────────────
+  // Start polling in background so data is ready after login
+  startPolling();
+  openLoginScreen();
+
+  console.info('[FootyOverlay] Initialised — awaiting login.');
+}
+
+// Kick off
+init();
+
+</script>
+
+</body>
+</html>
