@@ -5,7 +5,7 @@
 
 > Live AFL Fantasy & SuperCoach scoring overlay — for web and Android TV.
 
-A single-file SPA that sits over your AFL viewing experience and shows real-time fantasy scores for your tracked players. Deployable to Netlify in one click, and packageable as a native Android TV app via Capacitor.
+A single-file SPA that sits over your AFL viewing experience and shows real-time fantasy scores for your tracked players. Deployed at **[footyoverlay.netlify.app](https://footyoverlay.netlify.app)**, and packageable as a native Android TV app via Capacitor.
 
 ---
 
@@ -51,6 +51,10 @@ netlify dev
 ---
 
 ## 2. Netlify Deployment
+
+The app is already deployed at **[footyoverlay.netlify.app](https://footyoverlay.netlify.app)**.
+
+To deploy your own fork:
 
 ### Option A — Deploy via Netlify Dashboard (recommended)
 
@@ -107,7 +111,7 @@ Append `?mock=true` to any URL to load the app with fully simulated data:
 
 ```
 http://localhost:8888/?mock=true
-https://your-site.netlify.app/?mock=true
+https://footyoverlay.netlify.app/?mock=true
 ```
 
 In mock mode:
@@ -137,6 +141,18 @@ FanFooty (`fanfooty.com.au`) does not have a public API. We scrape their HTML se
 | Game detail            | `https://www.fanfooty.com.au/game/{id}/`         | Player-level stat table      |
 | Round fixtures         | `https://www.fanfooty.com.au/fixture/`           | Upcoming game schedule       |
 
+### What We Scrape
+
+For each player in a live game, the proxy captures three fields from the game detail page:
+
+| Field         | Description                        |
+|---------------|------------------------------------|
+| `number`      | Player's guernsey number           |
+| `name`        | Player's full name                 |
+| `score`       | Player's current fantasy score     |
+
+This keeps the payload small and the scraping logic simple. The front-end uses these fields directly to display and track scores.
+
 ### Implementation Steps
 
 **Step 1 — Inspect the live scores page**
@@ -150,13 +166,9 @@ Update the `parseLiveGames($)` function in `fanfooty-proxy.js` with the correct 
 
 **Step 2 — Inspect the game detail page**
 
-Open a game detail URL. Look for:
-- A player stats table with columns: `#`, `Name`, `K`, `HB`, `M`, `T`, `G`, `B`, `FF`, `FA`
-- Position info (MID, FWD, DEF, RUC)
+Open a game detail URL. Look for a player stats table containing guernsey number, player name, and fantasy score columns.
 
-Update `fetchGamePlayers(gameId)` with correct selectors.
-
-> **Important:** Capture raw stat counts (`kicks`, `handballs`, `marks`, etc.) rather than FanFooty's pre-computed score. This lets the app compute the correct score for both AFL Fantasy and SuperCoach in real time.
+Update `fetchGamePlayers(gameId)` to extract `number`, `name`, and `score` for each player row.
 
 **Step 3 — Implement the fixture parser**
 
@@ -182,6 +194,7 @@ const liveGames = parseLiveGames($);
 // For each live game, fetch player stats
 for (const game of liveGames) {
   game.players = await fetchGamePlayers(game.id);
+  // Each player: { number, name, score }
 }
 
 const upcomingGames = parseUpcomingGames($);
@@ -299,7 +312,7 @@ When running as a native app, API calls go to `localhost` by default. Update `ca
 ```json
 {
   "server": {
-    "url": "https://your-site.netlify.app",
+    "url": "https://footyoverlay.netlify.app",
     "cleartext": false
   }
 }
