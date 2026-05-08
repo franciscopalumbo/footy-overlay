@@ -4,19 +4,16 @@
   "appId": "au.com.footyoverlay.app",
   "appName": "FootyOverlay",
 
-  "webDir": ".",
-
-  "bundledWebRuntime": false,
+  "webDir": "www",
 
   "server": {
+    "url": "https://footyoverlay.netlify.app",
     "androidScheme": "https",
     "allowNavigation": [
-      "*.fanfooty.com.au",
-      "*.netlify.app",
+      "footyoverlay.netlify.app",
       "fonts.googleapis.com",
       "fonts.gstatic.com"
-    ],
-    "hostname": "footyoverlay.app"
+    ]
   },
 
   "android": {
@@ -28,10 +25,7 @@
     "allowMixedContent": false,
     "captureInput": true,
     "webContentsDebuggingEnabled": false,
-
-    "loggingBehavior": "none",
-
-    "flavor": "tv"
+    "loggingBehavior": "none"
   },
 
   "plugins": {
@@ -41,12 +35,6 @@
       "backgroundColor": "#0d1117",
       "androidSplashResourceName": "splash",
       "showSpinner": false
-    },
-
-    "Keyboard": {
-      "resize": "body",
-      "style": "dark",
-      "resizeOnFullScreen": true
     }
   }
 }

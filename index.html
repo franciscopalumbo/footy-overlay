@@ -2660,12 +2660,42 @@ function showView(viewName) {
 /* ================================================================
    MODAL HELPERS
    ================================================================ */
+
+// Focus trap: keeps D-pad/Tab inside an open modal.
+// Called once per modal element — the handler self-checks .open so it's safe
+// to leave attached permanently.
+function trapFocus(modalEl) {
+  modalEl.addEventListener('keydown', e => {
+    if (e.key !== 'Tab' || !modalEl.classList.contains('open')) return;
+    const focusable = [...modalEl.querySelectorAll(
+      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )];
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last  = focusable[focusable.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+    }
+  });
+}
+
 function openModal(id) {
-  document.getElementById(id).classList.add('open');
+  const el = document.getElementById(id);
+  el.classList.add('open');
+  // Move focus into modal so D-pad navigation starts inside it
+  const firstFocusable = el.querySelector(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  if (firstFocusable) requestAnimationFrame(() => firstFocusable.focus());
 }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
 }
+
+// Attach focus traps to all modals on load
+document.querySelectorAll('.modal-backdrop').forEach(trapFocus);
 
 // Wire up all modal close triggers
 document.querySelectorAll('[data-modal]').forEach(btn => {
@@ -2684,6 +2714,45 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     document.querySelectorAll('.modal-backdrop.open').forEach(m => m.classList.remove('open'));
   }
+});
+
+/* ================================================================
+   ANDROID TV — BACK BUTTON (hardware remote / Capacitor popstate)
+   ================================================================
+   Android TV back button fires popstate because Capacitor's WebView
+   exposes it as browser history navigation. With a SPA there is no
+   meaningful back-history, so without this handler the first Back
+   press exits the app entirely.
+
+   Strategy: always keep one dummy history entry ahead of the real
+   origin so there is always something to pop. On each popstate:
+     1. Close any open modal first.
+     2. If in a sub-view, return to Watch.
+     3. Otherwise stay on Watch (re-push the dummy entry).
+================================================================ */
+window.history.pushState({ footy: true }, '');
+
+window.addEventListener('popstate', () => {
+  // 1. Close open modals
+  const openModal = document.querySelector('.modal-backdrop.open');
+  if (openModal) {
+    openModal.classList.remove('open');
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 2. Login screen can't be dismissed with Back
+  if (document.getElementById('login-screen').classList.contains('open')) {
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 3. Sub-view → Watch
+  if (State.activeView && State.activeView !== 'watch') {
+    showView('watch');
+    window.history.pushState({ footy: true }, '');
+    return;
+  }
+  // 4. Already on Watch — stay (prevents exiting the app accidentally)
+  window.history.pushState({ footy: true }, '');
 });
 
 /* Confirm modal */

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FootyOverlay</string>
+    <string name="title_activity_main">FootyOverlay</string>
+    <string name="package_name">au.com.footyoverlay.app</string>
+    <string name="custom_url_scheme">au.com.footyoverlay.app</string>
+</resources>
