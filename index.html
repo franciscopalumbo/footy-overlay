@@ -3165,42 +3165,49 @@ document.getElementById('game-detail-back').addEventListener('click', () => show
 
 
 // Begin Overlay
+// _overlayBtnBusy prevents a second tap from firing a concurrent async invocation
+// while we are in the middle of the stop → confirm-stopped → start cycle.
+let _overlayBtnBusy = false;
+
 document.getElementById('btn-begin-overlay').addEventListener('click', async () => {
-  console.log('[FootyOverlay] Begin Overlay pressed');
+  console.log('[FootyOverlay] Begin Overlay pressed (busy=' + _overlayBtnBusy + ')');
+  if (_overlayBtnBusy) return;
+  _overlayBtnBusy = true;
 
-  // ── Guards ──────────────────────────────────────────────────────────────────
-  if (!State.currentGame) {
-    console.warn('[FootyOverlay] Begin Overlay: no currentGame, aborting');
-    return;
-  }
-  const hasSelections = State.scoreboardMode ||
-    State.customTeams.some(t => t.playerIds.length > 0);
-  if (!hasSelections) {
-    showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0, 'neutral');
-    return;
-  }
-
-  // ── Persist state ───────────────────────────────────────────────────────────
-  lsSet('overlay_currentGame',    State.currentGame);
-  lsSet('overlay_customTeams',    State.customTeams);
-  lsSet('overlay_scoreboardMode', State.scoreboardMode);
-  lsSet('overlay_settings',       State.activeUser?.settings || defaultSettings());
   try {
-    localStorage.setItem('fo_overlay_game',  JSON.stringify(State.currentGame));
-    localStorage.setItem('fo_overlay_teams', JSON.stringify(State.customTeams));
-  } catch (_) { /* storage full / private mode — URL params are the real source */ }
+    // ── Guards ────────────────────────────────────────────────────────────────
+    if (!State.currentGame) {
+      // Show a visible toast so this silent failure is obvious during debugging
+      console.warn('[FootyOverlay] Begin Overlay: State.currentGame is null');
+      showToast('⚠️', 'No game selected', 'Go back to Watch and pick a game first.', 0, 'neutral');
+      return;
+    }
+    const hasSelections = State.scoreboardMode ||
+      State.customTeams.some(t => t.playerIds.length > 0);
+    if (!hasSelections) {
+      showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0, 'neutral');
+      return;
+    }
 
-  // ── Browser / non-Capacitor fallback ────────────────────────────────────────
-  const plugin = window.Capacitor?.Plugins?.OverlayPlugin;
-  if (!plugin) {
-    console.log('[FootyOverlay] No OverlayPlugin — using in-app overlay');
-    activateOverlay();
-    return;
-  }
+    // ── Persist state ─────────────────────────────────────────────────────────
+    lsSet('overlay_currentGame',    State.currentGame);
+    lsSet('overlay_customTeams',    State.customTeams);
+    lsSet('overlay_scoreboardMode', State.scoreboardMode);
+    lsSet('overlay_settings',       State.activeUser?.settings || defaultSettings());
+    try {
+      localStorage.setItem('fo_overlay_game',  JSON.stringify(State.currentGame));
+      localStorage.setItem('fo_overlay_teams', JSON.stringify(State.customTeams));
+    } catch (_) {}
 
-  // ── Everything below is wrapped in try/catch so errors surface as toasts ───
-  try {
-    // Permission check
+    // ── Browser / non-Capacitor fallback ──────────────────────────────────────
+    const plugin = window.Capacitor?.Plugins?.OverlayPlugin;
+    if (!plugin) {
+      console.log('[FootyOverlay] No OverlayPlugin — using in-app overlay');
+      activateOverlay();
+      return;
+    }
+
+    // ── Permission ────────────────────────────────────────────────────────────
     console.log('[FootyOverlay] Checking overlay permission...');
     const { granted } = await plugin.checkPermission();
     console.log('[FootyOverlay] Permission granted:', granted);
@@ -3212,17 +3219,26 @@ document.getElementById('btn-begin-overlay').addEventListener('click', async () 
       return;
     }
 
-    // Always stop any existing overlay first.
-    // stopService() is a no-op when nothing is running, so this is always safe.
-    // The 400 ms pause gives Android time to call onDestroy() and null out the
-    // WebView field before onStartCommand() fires again — prevents the "already
-    // running" guard from blocking a fresh start.
-    console.log('[FootyOverlay] Stopping any existing overlay before (re)start...');
-    try { await plugin.stopOverlay(); } catch (_) { /* nothing was running */ }
-    await new Promise(r => setTimeout(r, 400));
-    console.log('[FootyOverlay] Stop wait complete — proceeding to start');
+    // ── Stop any running instance, then wait until it confirms stopped ─────────
+    // A blind fixed delay is unreliable — onDestroy() may not have finished by
+    // the time startOverlay() fires, leaving webView != null and causing the
+    // "already running" guard in onStartCommand() to block a fresh window.
+    // Instead, poll isOverlayRunning() which reads the volatile static sentinel
+    // that OverlayService clears at the very top of onDestroy().
+    console.log('[FootyOverlay] Stopping any existing overlay...');
+    try { await plugin.stopOverlay(); } catch (_) {}
 
-    // Build URL params
+    const _stopDeadline = Date.now() + 2000; // max 2 s
+    while (Date.now() < _stopDeadline) {
+      try {
+        const { running } = await plugin.isOverlayRunning();
+        if (!running) break;
+      } catch (_) { break; }
+      await new Promise(r => setTimeout(r, 100));
+    }
+    console.log('[FootyOverlay] Service confirmed stopped — proceeding to start');
+
+    // ── Start ─────────────────────────────────────────────────────────────────
     const _ovGameId  = State.currentGame.id;
     const _ovTeamIds = State.customTeams.map(t => t.id).join(',');
     const _ovSBMode  = State.scoreboardMode ? '1' : '0';
@@ -3239,9 +3255,11 @@ document.getElementById('btn-begin-overlay').addEventListener('click', async () 
     showToast('✅', 'Overlay started', 'Score overlay is now showing on top of other apps.', 0, 'neutral');
 
   } catch (err) {
-    // Surface any Capacitor bridge / service error so we can diagnose it
     console.error('[FootyOverlay] Begin Overlay failed:', err);
     showToast('❌', 'Overlay error', String(err?.message || err), 0, 'neutral');
+  } finally {
+    // Always release the lock — even if an error or early return fired
+    _overlayBtnBusy = false;
   }
 });
 
