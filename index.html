@@ -3174,11 +3174,19 @@ document.getElementById('btn-begin-overlay').addEventListener('click', async () 
     return;
   }
 
-  // Persist current state so the overlay WebView can read it from localStorage
+  // Persist state via lsSet (wrapped key) for any code that still reads those keys
   lsSet('overlay_currentGame',    State.currentGame);
   lsSet('overlay_customTeams',    State.customTeams);
   lsSet('overlay_scoreboardMode', State.scoreboardMode);
   lsSet('overlay_settings',       State.activeUser?.settings || defaultSettings());
+
+  // Also write with simple top-level keys as a reliable cross-WebView fallback.
+  // The OverlayService WebView may not share the Capacitor WebView's localStorage,
+  // so we write both and let the overlay pick up whichever is available.
+  try {
+    localStorage.setItem('fo_overlay_game',  JSON.stringify(State.currentGame));
+    localStorage.setItem('fo_overlay_teams', JSON.stringify(State.customTeams));
+  } catch (_) { /* storage full / private mode — URL params are the real source */ }
 
   // On Android the native OverlayPlugin starts the system overlay service.
   // In a browser or non-Capacitor environment fall back to the in-app overlay.
@@ -3197,7 +3205,19 @@ document.getElementById('btn-begin-overlay').addEventListener('click', async () 
     return;
   }
 
-  await plugin.startOverlay();
+  // Primary data channel: encode identifiers as URL params so OverlayService can
+  // embed them in the WebView URL — no shared localStorage required.
+  const _ovGameId  = State.currentGame.id;
+  const _ovTeamIds = State.customTeams.map(t => t.id).join(',');
+  const _ovSBMode  = State.scoreboardMode ? '1' : '0';
+  const _ovScoring = State.activeUser?.settings?.scoringSystem || 'afl_fantasy';
+
+  await plugin.startOverlay({
+    gameId:        _ovGameId,
+    teamIds:       _ovTeamIds,
+    scoreboardMode: _ovSBMode,
+    scoringSystem:  _ovScoring,
+  });
   showToast('✅', 'Overlay started', 'Score overlay is now showing on top of other apps.', 0, 'neutral');
 });
 
@@ -4633,22 +4653,67 @@ function startOverlayPolling() {
 function initOverlayOnlyMode() {
   document.body.classList.add('overlay-only-mode');
 
-  // Restore the state saved by the main app before launching the service
-  const savedGame     = lsGet('overlay_currentGame');
-  const savedTeams    = lsGet('overlay_customTeams');
-  const savedSBMode   = lsGet('overlay_scoreboardMode');
-  const savedSettings = lsGet('overlay_settings');
+  // ── 1. Read identifiers from URL params (injected by OverlayService) ─────────
+  const _p          = new URLSearchParams(window.location.search);
+  const _urlGameId  = _p.get('gameId')  || '';
+  const _urlTeamIds = (_p.get('teams')  || '').split(',').filter(Boolean);
+  const _urlSBMode  = _p.get('scoreboardMode') === '1';
+  const _urlScoring = _p.get('scoring') || 'afl_fantasy';
 
-  if (savedGame)               State.currentGame    = savedGame;
-  if (savedTeams)              State.customTeams     = savedTeams;
-  if (savedSBMode !== null)    State.scoreboardMode  = savedSBMode;
-  if (savedSettings)           State.activeUser      = { settings: savedSettings };
+  State.activeUser     = { settings: { ...defaultSettings(), scoringSystem: _urlScoring } };
+  State.scoreboardMode = _urlSBMode;
 
-  // Show the overlay filling the entire native window
+  // ── 2. Show the overlay shell immediately (tables fill in once data arrives) ──
   State.overlayElement = document.getElementById('overlay');
   State.overlayVisible = true;
   State.overlayElement.classList.add('active');
-  renderOverlayTables();
+
+  // ── 3. Load data async: API for live scores, localStorage for team composition ─
+  (async function loadAndRender() {
+    // Try to restore full team objects (with playerIds) from localStorage.
+    // Written by the main app with a direct localStorage.setItem call.
+    let _savedTeams = null;
+    try {
+      const _raw = localStorage.getItem('fo_overlay_teams');
+      if (_raw) _savedTeams = JSON.parse(_raw);
+    } catch (_) {}
+
+    // Filter to only teams the user selected for this overlay session
+    if (_savedTeams) {
+      State.customTeams = _urlTeamIds.length
+        ? _savedTeams.filter(t => _urlTeamIds.includes(t.id))
+        : _savedTeams;
+    }
+
+    // Fetch fresh live game data from the API
+    try {
+      const _res = await fetch('/api/fanfooty-proxy');
+      if (!_res.ok) throw new Error(`HTTP ${_res.status}`);
+      const _data = await _res.json();
+      const _all  = [
+        ...(_data.liveGames     || []),
+        ...(_data.upcomingGames || []),
+        ...(_data.pastGames     || []),
+      ];
+      if (_urlGameId) {
+        const _found = _all.find(g => g.id === _urlGameId);
+        if (_found) State.currentGame = _found;
+      }
+      // Store round info for any downstream code that needs it
+      if (_data.round) State.round = _data.round;
+    } catch (_err) {
+      console.warn('[Overlay] Initial fetch failed, falling back to localStorage:', _err.message);
+      // localStorage fallback — may be empty if WebViews don't share storage
+      try {
+        const _raw = localStorage.getItem('fo_overlay_game');
+        if (_raw) State.currentGame = JSON.parse(_raw);
+      } catch (_) {}
+    }
+
+    renderOverlayTables();
+  })();
+
+  // ── 4. Wire up controls ───────────────────────────────────────────────────────
 
   // ✕ button → stop the native OverlayService
   document.getElementById('overlay-close-btn').addEventListener('click', () => {
@@ -4656,14 +4721,14 @@ function initOverlayOnlyMode() {
   });
 
   // Touch-drag on the overlay header → call native to reposition the window.
-  // Using per-event deltas so the position stays correct even as the window moves.
-  const handle = document.getElementById('overlay-drag-handle');
+  // Per-event deltas keep the math correct even as the window position changes.
+  const _handle = document.getElementById('overlay-drag-handle');
   let _dragX = 0, _dragY = 0;
-  handle.addEventListener('touchstart', e => {
+  _handle.addEventListener('touchstart', e => {
     _dragX = e.touches[0].clientX;
     _dragY = e.touches[0].clientY;
   }, { passive: true });
-  handle.addEventListener('touchmove', e => {
+  _handle.addEventListener('touchmove', e => {
     if (!window.FootyOverlayNative) return;
     const dx = Math.round(e.touches[0].clientX - _dragX);
     const dy = Math.round(e.touches[0].clientY - _dragY);
@@ -4672,6 +4737,7 @@ function initOverlayOnlyMode() {
     window.FootyOverlayNative.moveOverlay(dx, dy);
   }, { passive: false });
 
+  // ── 5. Start polling for live score updates every 30 s ────────────────────────
   startOverlayPolling();
 }
 
