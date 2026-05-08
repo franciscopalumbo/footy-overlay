@@ -3777,6 +3777,7 @@ document.getElementById('btn-customise-players').addEventListener('click', () =>
 function activateOverlay() {
   State.overlayVisible = true;
   const overlay = getOverlayElement();
+  if (!overlay) return;
   overlay.classList.add('active');
   State.overlayMinimised = false;
   overlay.classList.remove('minimised');
@@ -3805,7 +3806,9 @@ document.getElementById('overlay-popout-btn').addEventListener('click', async ()
 
 const _snapPositions = { tl: 'top-left', tr: 'top-right', bl: 'bottom-left', br: 'bottom-right' };
 ['tl', 'tr', 'bl', 'br'].forEach(key => {
-  document.getElementById(`overlay-snap-${key}`).addEventListener('click', () => {
+  const _snapEl = document.getElementById(`overlay-snap-${key}`);
+  if (!_snapEl) return; // snap buttons removed from HTML — skip silently
+  _snapEl.addEventListener('click', () => {
     const pos = _snapPositions[key];
     if (document.body.classList.contains('overlay-only-mode')) {
       // In overlay-only mode, move the native window instead of CSS positioning
