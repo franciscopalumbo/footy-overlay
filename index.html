@@ -2669,9 +2669,13 @@ function showView(viewName) {
   const overlayToggleBtn = document.getElementById('overlay-toggle-btn');
   if (overlayToggleBtn) overlayToggleBtn.style.display = viewName === 'game-detail' ? 'flex' : 'none';
 
-  // Auto-focus first focusable element for D-pad navigation
+  // Auto-focus first focusable element for D-pad navigation.
+  // On the Watch view prefer the first game card; cards may not exist yet on
+  // initial load (data hasn't arrived) so fall back to first candidate.
   if (el) {
     requestAnimationFrame(() => {
+      const firstCard = viewName === 'watch' ? el.querySelector('.game-card') : null;
+      if (firstCard) { firstCard.focus({ preventScroll: true }); return; }
       const candidates = SpatialNav.getCandidates(el);
       if (candidates.length) candidates[0].focus({ preventScroll: true });
     });
@@ -2895,6 +2899,17 @@ function renderWatchTab(liveGames, upcomingGames, pastGames = []) {
     } else {
       if (recentHead) recentHead.style.display = 'none';
     }
+  }
+
+  // If the Watch view is already visible when data arrives, focus the first
+  // game card so D-pad navigation has a starting point immediately.
+  if (State.activeView === 'watch') {
+    requestAnimationFrame(() => {
+      const firstCard = document.querySelector('#view-watch .game-card');
+      if (firstCard && document.activeElement === document.body) {
+        firstCard.focus({ preventScroll: true });
+      }
+    });
   }
 }
 
@@ -4343,12 +4358,12 @@ const SpatialNav = (() => {
     const openModal = document.querySelector('.modal-backdrop.open');
     const scope = openModal || document;
     const candidates = getCandidates(scope);
-    if (!candidates.length) return;
+    if (!candidates.length) return false;
 
     const active = document.activeElement;
     if (!active || !candidates.includes(active)) {
       candidates[0].focus({ preventScroll: false });
-      return;
+      return true;
     }
 
     const fromRect = active.getBoundingClientRect();
@@ -4361,7 +4376,8 @@ const SpatialNav = (() => {
       if (s < bestScore) { bestScore = s; best = el; }
     }
 
-    if (best) best.focus({ preventScroll: false });
+    if (best) { best.focus({ preventScroll: false }); return true; }
+    return false;
   }
 
   function activate(el) {
@@ -4381,8 +4397,8 @@ const SpatialNav = (() => {
   document.addEventListener('keydown', e => {
     const KEY = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
     if (KEY[e.keyCode]) {
-      e.preventDefault();
-      move(KEY[e.keyCode]);
+      const moved = move(KEY[e.keyCode]);
+      if (moved) e.preventDefault();
       return;
     }
     // Enter or Space activates the focused element
