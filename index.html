@@ -1306,6 +1306,40 @@
     #overlay .overlay-tables::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.25); border-radius: 5px; }
     #overlay .overlay-tables::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.4); }
 
+    /* ============================================================
+       OVERLAY-ONLY MODE — runs inside OverlayService WebView
+       When ?overlayonly=true, the full app is hidden and the overlay
+       fills the entire 300px-wide native window.
+       ============================================================ */
+    body.overlay-only-mode #app,
+    body.overlay-only-mode #login-screen,
+    body.overlay-only-mode #toast-container { display: none !important; }
+
+    body.overlay-only-mode {
+      background: transparent;
+    }
+
+    body.overlay-only-mode #overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: flex !important;
+      flex-direction: column;
+      width: 100% !important;
+      max-height: 100vh;
+      overflow: hidden;
+      border-radius: 0;
+      z-index: 9999;
+    }
+
+    body.overlay-only-mode #overlay .overlay-tables {
+      flex: 1;
+      overflow-y: auto;
+      max-height: calc(100vh - 48px);
+    }
+
+    /* Hide popout in overlay-only mode — not applicable */
+    body.overlay-only-mode #overlay-popout-btn { display: none; }
+
     .overlay-team-table {
       background: rgba(13,17,23, 0.92);
     }
@@ -1916,10 +1950,6 @@
   <div class="overlay-header" id="overlay-drag-handle">
     <span class="overlay-title">LIVE SCORES</span>
     <div class="overlay-controls">
-      <button class="overlay-btn" id="overlay-snap-tl" aria-label="Snap to top-left"     title="Top Left">↖</button>
-      <button class="overlay-btn" id="overlay-snap-tr" aria-label="Snap to top-right"    title="Top Right">↗</button>
-      <button class="overlay-btn" id="overlay-snap-bl" aria-label="Snap to bottom-left"  title="Bottom Left">↙</button>
-      <button class="overlay-btn" id="overlay-snap-br" aria-label="Snap to bottom-right" title="Bottom Right">↘</button>
       <button class="overlay-btn" id="overlay-popout-btn" aria-label="Pop out overlay" title="Pop out overlay">⧉</button>
       <button class="overlay-btn" id="overlay-minimise-btn" aria-label="Minimise overlay">−</button>
       <button class="overlay-btn" id="overlay-close-btn" aria-label="Close overlay">✕</button>
@@ -3135,7 +3165,7 @@ document.getElementById('game-detail-back').addEventListener('click', () => show
 
 
 // Begin Overlay
-document.getElementById('btn-begin-overlay').addEventListener('click', () => {
+document.getElementById('btn-begin-overlay').addEventListener('click', async () => {
   if (!State.currentGame) return;
   const hasSelections = State.scoreboardMode ||
     State.customTeams.some(t => t.playerIds.length > 0);
@@ -3143,7 +3173,32 @@ document.getElementById('btn-begin-overlay').addEventListener('click', () => {
     showToast('⚠️', 'No players selected', 'Tick at least one player in Customise Players first', 0, 'neutral');
     return;
   }
-  activateOverlay();
+
+  // Persist current state so the overlay WebView can read it from localStorage
+  lsSet('overlay_currentGame',    State.currentGame);
+  lsSet('overlay_customTeams',    State.customTeams);
+  lsSet('overlay_scoreboardMode', State.scoreboardMode);
+  lsSet('overlay_settings',       State.activeUser?.settings || defaultSettings());
+
+  // On Android the native OverlayPlugin starts the system overlay service.
+  // In a browser or non-Capacitor environment fall back to the in-app overlay.
+  const plugin = window.Capacitor?.Plugins?.OverlayPlugin;
+  if (!plugin) {
+    activateOverlay();
+    return;
+  }
+
+  const { granted } = await plugin.checkPermission();
+  if (!granted) {
+    showToast('🔐', 'Permission needed',
+      'Grant "Display over other apps" in the next screen, then press Begin Overlay again.',
+      0, 'neutral');
+    await plugin.requestPermission();
+    return;
+  }
+
+  await plugin.startOverlay();
+  showToast('✅', 'Overlay started', 'Score overlay is now showing on top of other apps.', 0, 'neutral');
 });
 
 /* ================================================================
@@ -3690,10 +3745,15 @@ const _snapPositions = { tl: 'top-left', tr: 'top-right', bl: 'bottom-left', br:
 ['tl', 'tr', 'bl', 'br'].forEach(key => {
   document.getElementById(`overlay-snap-${key}`).addEventListener('click', () => {
     const pos = _snapPositions[key];
-    applyOverlayPosition(pos);
-    if (State.activeProfile) {
-      State.activeProfile.settings.overlayPosition = pos;
-      saveCurrentProfile();
+    if (document.body.classList.contains('overlay-only-mode')) {
+      // In overlay-only mode, move the native window instead of CSS positioning
+      window.FootyOverlayNative?.snapOverlay(pos);
+    } else {
+      applyOverlayPosition(pos);
+      if (State.activeProfile) {
+        State.activeProfile.settings.overlayPosition = pos;
+        saveCurrentProfile();
+      }
     }
   });
 });
@@ -4516,6 +4576,11 @@ const SpatialNav = (() => {
   }
 
   document.addEventListener('keydown', e => {
+    // Never intercept keys while the user is typing in a text field
+    const tag = document.activeElement.tagName;
+    const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.contentEditable === 'true';
+    if (isTyping) return;
+
     const KEY = { 37: 'left', 38: 'up', 39: 'right', 40: 'down' };
     if (KEY[e.keyCode]) {
       const moved = move(KEY[e.keyCode]);
@@ -4538,7 +4603,86 @@ const SpatialNav = (() => {
 /* ================================================================
    INIT — Entry point
    ================================================================ */
+/* ================================================================
+   OVERLAY-ONLY MODE
+   Runs when the page is loaded inside the native OverlayService
+   WebView (?overlayonly=true).  Skips login, restores saved state
+   from localStorage, renders the scoreboard and polls every 30 s.
+   ================================================================ */
+
+function startOverlayPolling() {
+  async function poll() {
+    if (!State.currentGame) return;
+    try {
+      const res = await fetch('/api/fanfooty-proxy');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const updated = (data.liveGames || []).find(g => g.id === State.currentGame.id);
+      if (updated) {
+        State.currentGame = updated;
+        renderOverlayTables();
+      }
+    } catch (err) {
+      console.warn('[Overlay] Poll failed:', err.message);
+    }
+  }
+  poll(); // immediate first poll
+  State.pollingTimers.overlayOnly = setInterval(poll, 30000);
+}
+
+function initOverlayOnlyMode() {
+  document.body.classList.add('overlay-only-mode');
+
+  // Restore the state saved by the main app before launching the service
+  const savedGame     = lsGet('overlay_currentGame');
+  const savedTeams    = lsGet('overlay_customTeams');
+  const savedSBMode   = lsGet('overlay_scoreboardMode');
+  const savedSettings = lsGet('overlay_settings');
+
+  if (savedGame)               State.currentGame    = savedGame;
+  if (savedTeams)              State.customTeams     = savedTeams;
+  if (savedSBMode !== null)    State.scoreboardMode  = savedSBMode;
+  if (savedSettings)           State.activeUser      = { settings: savedSettings };
+
+  // Show the overlay filling the entire native window
+  State.overlayElement = document.getElementById('overlay');
+  State.overlayVisible = true;
+  State.overlayElement.classList.add('active');
+  renderOverlayTables();
+
+  // ✕ button → stop the native OverlayService
+  document.getElementById('overlay-close-btn').addEventListener('click', () => {
+    window.FootyOverlayNative?.stopOverlay();
+  });
+
+  // Touch-drag on the overlay header → call native to reposition the window.
+  // Using per-event deltas so the position stays correct even as the window moves.
+  const handle = document.getElementById('overlay-drag-handle');
+  let _dragX = 0, _dragY = 0;
+  handle.addEventListener('touchstart', e => {
+    _dragX = e.touches[0].clientX;
+    _dragY = e.touches[0].clientY;
+  }, { passive: true });
+  handle.addEventListener('touchmove', e => {
+    if (!window.FootyOverlayNative) return;
+    const dx = Math.round(e.touches[0].clientX - _dragX);
+    const dy = Math.round(e.touches[0].clientY - _dragY);
+    _dragX = e.touches[0].clientX;
+    _dragY = e.touches[0].clientY;
+    window.FootyOverlayNative.moveOverlay(dx, dy);
+  }, { passive: false });
+
+  startOverlayPolling();
+}
+
 function init() {
+  // Overlay-only mode — must be checked before anything else
+  const _initParams = new URLSearchParams(window.location.search);
+  if (_initParams.get('overlayonly') === 'true') {
+    initOverlayOnlyMode();
+    return;
+  }
+
   State.overlayElement = document.getElementById('overlay');
   updateOverlayPopoutButton();
 
